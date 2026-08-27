@@ -13,6 +13,7 @@ from recorder import Recorder
 from transcriber import Transcriber
 from settings_manager import SettingsManager
 from ad_manager import AdManager
+from waveform import WaveformWindow
 
 class Signals(QObject):
     text_ready = pyqtSignal(str)
@@ -39,13 +40,15 @@ class MainWindow(QMainWindow):
         self.init_hotkey()
         self.load_active_model()
         self.init_ad_timer()
+        self.init_waveform()
+        self.init_level_monitor()
         
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
             QTimer.singleShot(100, self.hide_to_tray)
     
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        self.setFixedSize(400, 550)
+        self.setFixedSize(400, 600)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
@@ -123,6 +126,17 @@ class MainWindow(QMainWindow):
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
         
+        viz_group = QGroupBox("Визуализация")
+        viz_layout = QVBoxLayout()
+        
+        self.show_waveform_cb = QCheckBox("Показывать волну при записи")
+        self.show_waveform_cb.setChecked(self.settings.get("show_waveform", True))
+        self.show_waveform_cb.stateChanged.connect(self.on_waveform_changed)
+        viz_layout.addWidget(self.show_waveform_cb)
+        
+        viz_group.setLayout(viz_layout)
+        layout.addWidget(viz_group)
+        
         model_group = QGroupBox("Модели")
         model_layout = QVBoxLayout()
         
@@ -165,6 +179,24 @@ class MainWindow(QMainWindow):
         self.ad_timer = QTimer()
         self.ad_timer.timeout.connect(self.check_ads)
         self.ad_timer.start(60000)
+    
+    def init_waveform(self):
+        self.waveform = WaveformWindow()
+    
+    def init_level_monitor(self):
+        self.level_timer = QTimer()
+        self.level_timer.timeout.connect(self.update_level)
+        self.level_timer.setInterval(33)
+    
+    def update_level(self):
+        if self.is_recording and self.recorder.is_recording:
+            audio = self.recorder.get_audio()
+            if len(audio) > 0:
+                import numpy as np
+                level = np.abs(audio).mean() / 32768.0
+                self.waveform.set_level(level * 3)
+            else:
+                self.waveform.set_level(0.1)
     
     def check_ads(self):
         if self.ad_manager.should_show():
@@ -252,12 +284,16 @@ class MainWindow(QMainWindow):
             self.is_recording = True
             self.recorder.start()
             self.signals.recording_started.emit()
+            self.waveform.show_wave()
+            self.level_timer.start()
     
     def stop_recording(self):
         if self.is_recording:
             self.is_recording = False
             audio = self.recorder.stop()
             self.signals.recording_stopped.emit()
+            self.waveform.hide_wave()
+            self.level_timer.stop()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
     
     def transcribe_audio(self, audio):
@@ -315,6 +351,12 @@ class MainWindow(QMainWindow):
                 self.init_hotkey()
             except:
                 pass
+    
+    def on_waveform_changed(self, state):
+        self.settings.set("show_waveform", state == Qt.CheckState.Checked.value)
+        if state != Qt.CheckState.Checked.value:
+            self.waveform.hide_wave()
+            self.level_timer.stop()
     
     def update_model_list(self):
         self.model_list.clear()
