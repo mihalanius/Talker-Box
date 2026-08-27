@@ -12,6 +12,7 @@ from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction
 from recorder import Recorder
 from transcriber import Transcriber
 from settings_manager import SettingsManager
+from ad_manager import AdManager
 
 class Signals(QObject):
     text_ready = pyqtSignal(str)
@@ -24,6 +25,7 @@ class MainWindow(QMainWindow):
         self.settings = SettingsManager()
         self.recorder = Recorder()
         self.transcriber = None
+        self.ad_manager = AdManager()
         self.signals = Signals()
         self.is_recording = False
         self.hold_mode = False
@@ -36,13 +38,14 @@ class MainWindow(QMainWindow):
         self.init_tray()
         self.init_hotkey()
         self.load_active_model()
+        self.init_ad_timer()
         
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
             QTimer.singleShot(100, self.hide_to_tray)
     
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        self.setFixedSize(400, 500)
+        self.setFixedSize(400, 550)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
@@ -148,6 +151,35 @@ class MainWindow(QMainWindow):
         self.mic_indicator.setFixedHeight(5)
         self.mic_indicator.setStyleSheet("background-color: #333;")
         layout.addWidget(self.mic_indicator)
+        
+        self.ad_banner = QLabel()
+        self.ad_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.ad_banner.setFixedHeight(100)
+        self.ad_banner.setStyleSheet("background-color: #16213e; border: 1px solid #333; border-radius: 5px;")
+        self.ad_banner.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.ad_banner.mousePressEvent = self.on_ad_banner_click
+        layout.addWidget(self.ad_banner)
+        self.update_ad_banner()
+    
+    def init_ad_timer(self):
+        self.ad_timer = QTimer()
+        self.ad_timer.timeout.connect(self.check_ads)
+        self.ad_timer.start(60000)
+    
+    def check_ads(self):
+        if self.ad_manager.should_show():
+            self.show_tray_ad()
+            self.ad_manager.mark_shown()
+    
+    def show_tray_ad(self):
+        config = self.ad_manager.get_tray_config()
+        if config:
+            self.tray.showMessage(
+                config.get("title", "Talker Box"),
+                config.get("message", ""),
+                QSystemTrayIcon.MessageIcon.Information,
+                10000
+            )
     
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
@@ -374,6 +406,27 @@ class MainWindow(QMainWindow):
             pass
         self.tray.hide()
         QApplication.quit()
+    
+    def update_ad_banner(self):
+        if self.ad_manager.is_enabled():
+            config = self.ad_manager.get_banner_config()
+            alt_text = config.get("alt_text", "Talker Box Pro")
+            img_path = self.ad_manager.get_banner_image_path()
+            if img_path and os.path.exists(img_path):
+                pixmap = QPixmap(img_path)
+                self.ad_banner.setPixmap(pixmap.scaled(380, 90, Qt.AspectRatioMode.KeepAspectRatio))
+            else:
+                self.ad_banner.setText(alt_text)
+                self.ad_banner.setStyleSheet("background-color: #16213e; border: 1px solid #00f7ff; border-radius: 5px; color: #00f7ff; font-size: 12px;")
+        else:
+            self.ad_banner.hide()
+    
+    def on_ad_banner_click(self, event):
+        config = self.ad_manager.get_banner_config()
+        link = config.get("link", "")
+        if link:
+            import webbrowser
+            webbrowser.open(link)
 
 def main():
     app = QApplication(sys.argv)
