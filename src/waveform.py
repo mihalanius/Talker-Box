@@ -14,24 +14,24 @@ class WaveformWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         
-        self.setFixedSize(300, 100)
-        self.move_to_center()
+        self.setFixedSize(200, 50)
+        self.move_above_taskbar()
         
         self.level = 0.0
         self.phase = 0.0
-        self.bars = 40
+        self.bars = 25
         self.is_visible = False
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.animate)
         self.timer.setInterval(16)
     
-    def move_to_center(self):
+    def move_above_taskbar(self):
         screen = self.screen()
         if screen:
             geo = screen.geometry()
             x = (geo.width() - self.width()) // 2
-            y = (geo.height() - self.height()) // 2
+            y = geo.height() - self.height() - 60
             self.move(x, y)
     
     def set_level(self, level):
