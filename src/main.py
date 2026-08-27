@@ -103,8 +103,8 @@ class MainWindow(QMainWindow):
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(QLabel("Режим:"))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Toggle (нажал-нажал)", "Hold (удерживай)"])
-        self.mode_combo.setCurrentIndex(0 if self.settings.get("mode") == "toggle" else 1)
+        self.mode_combo.addItems(["Hold (удерживай)", "Toggle (нажал-нажал)"])
+        self.mode_combo.setCurrentIndex(0 if self.settings.get("mode") == "hold" else 1)
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
         mode_layout.addWidget(self.mode_combo)
         settings_layout.addLayout(mode_layout)
@@ -112,6 +112,22 @@ class MainWindow(QMainWindow):
         self.auto_send_cb = QCheckBox("Авто-отправка (Enter)")
         self.auto_send_cb.setChecked(self.settings.get("auto_send"))
         self.auto_send_cb.stateChanged.connect(self.on_auto_send_changed)
+        self.auto_send_cb.setStyleSheet("""
+            QCheckBox::indicator {
+                width: 40px;
+                height: 20px;
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #333;
+                border: 1px solid #00f7ff;
+                border-radius: 10px;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #00ff88;
+                border: 1px solid #00ff88;
+                border-radius: 10px;
+            }
+        """)
         settings_layout.addWidget(self.auto_send_cb)
         
         hotkey_layout = QHBoxLayout()
@@ -316,7 +332,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1000, lambda: self.mic_indicator.setStyleSheet("background-color: #333;"))
     
     def on_mode_changed(self, index):
-        mode = "toggle" if index == 0 else "hold"
+        mode = "hold" if index == 0 else "toggle"
         self.settings.set("mode", mode)
         try:
             import keyboard

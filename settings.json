@@ -1,0 +1,17 @@
+{
+  "hotkey": "ctrl+win",
+  "mode": "toggle",
+  "auto_send": false,
+  "active_model": "GigaAM v3",
+  "models": [
+    {
+      "name": "GigaAM v3",
+      "path": "",
+      "type": "sherpa-onnx",
+      "language": "ru",
+      "size": "215 MB"
+    }
+  ],
+  "auto_start": true,
+  "minimize_to_tray": true
+}

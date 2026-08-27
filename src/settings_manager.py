@@ -5,8 +5,8 @@ SETTINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settin
 
 DEFAULT_SETTINGS = {
     "hotkey": "ctrl+win",
-    "mode": "toggle",
-    "auto_send": False,
+    "mode": "hold",
+    "auto_send": True,
     "active_model": "GigaAM v3",
     "models": [
         {
