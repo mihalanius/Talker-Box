@@ -8,6 +8,7 @@ ADS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ads.json")
 DEFAULT_ADS = {
     "enabled": False,
     "interval_minutes": 60,
+    "mode": "banner_only",
     "banner": {
         "image": "assets/ads/banner.png",
         "link": "https://your-link.com",
@@ -42,6 +43,15 @@ class AdManager:
     def is_enabled(self):
         return self.config.get("enabled", False)
 
+    def get_mode(self):
+        return self.config.get("mode", "banner_only")
+
+    def show_banner(self):
+        return self.is_enabled() and self.get_mode() in ("banner_only", "banner_and_tray")
+
+    def show_tray(self):
+        return self.is_enabled() and self.get_mode() == "banner_and_tray"
+
     def should_show(self):
         if not self.is_enabled():
             return False
@@ -68,6 +78,10 @@ class AdManager:
 
     def set_enabled(self, enabled):
         self.config["enabled"] = enabled
+        self.save()
+
+    def set_mode(self, mode):
+        self.config["mode"] = mode
         self.save()
 
     def set_interval(self, minutes):

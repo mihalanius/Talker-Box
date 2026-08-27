@@ -8,12 +8,13 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QFileDialog, QLineEdit, QListWidget, QListWidgetItem,
                               QGroupBox, QFrame)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor
 from recorder import Recorder
 from transcriber import Transcriber
 from settings_manager import SettingsManager
 from ad_manager import AdManager
 from waveform import WaveformWindow
+from sounds import play_start_sound, play_stop_sound
 
 class Signals(QObject):
     text_ready = pyqtSignal(str)
@@ -42,13 +43,14 @@ class MainWindow(QMainWindow):
         self.init_ad_timer()
         self.init_waveform()
         self.init_level_monitor()
+        self.show()
         
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
             QTimer.singleShot(100, self.hide_to_tray)
     
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        self.setFixedSize(400, 600)
+        self.setFixedSize(400, 450)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
@@ -66,6 +68,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #00f7ff;
                 border-radius: 3px;
                 padding: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #16213e;
+                color: #ffffff;
+                selection-background-color: #1a1a4e;
+                selection-color: #ffffff;
+                border: 1px solid #00f7ff;
             }
             QCheckBox { color: #eee; }
             QGroupBox {
@@ -87,16 +96,6 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        
-        status_group = QGroupBox("Статус")
-        status_layout = QVBoxLayout()
-        self.status_label = QLabel("Готов к работе")
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = QFont("Consolas", 14)
-        self.status_label.setFont(font)
-        status_layout.addWidget(self.status_label)
-        status_group.setLayout(status_layout)
-        layout.addWidget(status_group)
         
         settings_group = QGroupBox("Настройки")
         settings_layout = QVBoxLayout()
@@ -125,17 +124,6 @@ class MainWindow(QMainWindow):
         
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
-        
-        viz_group = QGroupBox("Визуализация")
-        viz_layout = QVBoxLayout()
-        
-        self.show_waveform_cb = QCheckBox("Показывать волну при записи")
-        self.show_waveform_cb.setChecked(self.settings.get("show_waveform", True))
-        self.show_waveform_cb.stateChanged.connect(self.on_waveform_changed)
-        viz_layout.addWidget(self.show_waveform_cb)
-        
-        viz_group.setLayout(viz_layout)
-        layout.addWidget(viz_group)
         
         model_group = QGroupBox("Модели")
         model_layout = QVBoxLayout()
@@ -248,7 +236,7 @@ class MainWindow(QMainWindow):
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(color))
+        painter.setBrush(QBrush(QColor(color)))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(16, 8, 32, 40)
         painter.drawEllipse(22, 36, 20, 10)
@@ -286,6 +274,7 @@ class MainWindow(QMainWindow):
             self.signals.recording_started.emit()
             self.waveform.show_wave()
             self.level_timer.start()
+            play_start_sound()
     
     def stop_recording(self):
         if self.is_recording:
@@ -294,6 +283,7 @@ class MainWindow(QMainWindow):
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             self.level_timer.stop()
+            play_stop_sound()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
     
     def transcribe_audio(self, audio):
@@ -303,7 +293,6 @@ class MainWindow(QMainWindow):
                 self.signals.text_ready.emit(text)
     
     def on_text_ready(self, text):
-        self.status_label.setText(text)
         import pyperclip
         pyperclip.copy(text)
         
@@ -318,12 +307,10 @@ class MainWindow(QMainWindow):
             pass
     
     def on_recording_started(self):
-        self.status_label.setText("Запись...")
         self.mic_indicator.setStyleSheet("background-color: #00ff88;")
         self.tray.setIcon(self.create_mic_icon("#00ff88"))
     
     def on_recording_stopped(self):
-        self.status_label.setText("Распознавание...")
         self.mic_indicator.setStyleSheet("background-color: #ff8800;")
         self.tray.setIcon(self.create_mic_icon("#ff8800"))
         QTimer.singleShot(1000, lambda: self.mic_indicator.setStyleSheet("background-color: #333;"))
@@ -353,10 +340,7 @@ class MainWindow(QMainWindow):
                 pass
     
     def on_waveform_changed(self, state):
-        self.settings.set("show_waveform", state == Qt.CheckState.Checked.value)
-        if state != Qt.CheckState.Checked.value:
-            self.waveform.hide_wave()
-            self.level_timer.stop()
+        pass
     
     def update_model_list(self):
         self.model_list.clear()
@@ -450,16 +434,15 @@ class MainWindow(QMainWindow):
         QApplication.quit()
     
     def update_ad_banner(self):
-        if self.ad_manager.is_enabled():
+        if self.ad_manager.show_banner():
             config = self.ad_manager.get_banner_config()
-            alt_text = config.get("alt_text", "Talker Box Pro")
             img_path = self.ad_manager.get_banner_image_path()
             if img_path and os.path.exists(img_path):
                 pixmap = QPixmap(img_path)
                 self.ad_banner.setPixmap(pixmap.scaled(380, 90, Qt.AspectRatioMode.KeepAspectRatio))
             else:
-                self.ad_banner.setText(alt_text)
-                self.ad_banner.setStyleSheet("background-color: #16213e; border: 1px solid #00f7ff; border-radius: 5px; color: #00f7ff; font-size: 12px;")
+                self.ad_banner.setText("РЕКЛАМА")
+                self.ad_banner.setStyleSheet("background-color: #16213e; border: 1px solid #00f7ff; border-radius: 5px; color: #00f7ff; font-size: 18px; font-weight: bold;")
         else:
             self.ad_banner.hide()
     
