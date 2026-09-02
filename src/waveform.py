@@ -23,8 +23,17 @@ class WaveformWindow(QWidget):
     def show_wave(self):
         self.phase = 0.0
         self.active = True
+        self._position_above_taskbar()
         self.show()
         self.timer.start()
+
+    def _position_above_taskbar(self):
+        screen = self.screen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = geo.height() - self.height() - 10
+            self.move(x, y)
 
     def hide_wave(self):
         self.active = False
