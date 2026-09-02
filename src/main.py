@@ -322,7 +322,6 @@ class MainWindow(QMainWindow):
             self.recorder.start()
             self.signals.recording_started.emit()
             self.waveform.show_wave()
-            self.level_timer.start()
             play_start_sound()
     
     def stop_recording(self):
@@ -331,7 +330,6 @@ class MainWindow(QMainWindow):
             audio = self.recorder.stop()
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
-            self.level_timer.stop()
             play_stop_sound()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
     
