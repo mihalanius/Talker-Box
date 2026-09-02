@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "interval_minutes": 60,
+  "mode": "banner_only",
+  "banner": {
+    "image": "assets/ads/banner.png",
+    "link": "https://your-link.com",
+    "alt_text": "Реклама"
+  },
+  "tray_notification": {
+    "title": "Talker Box",
+    "message": "Попробуйте Talker Box Pro — 50+ языков",
+    "link": "https://your-link.com"
+  }
+}
