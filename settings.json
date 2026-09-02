@@ -1,5 +1,5 @@
 {
-  "hotkey": "ctrl+win",
+  "hotkey": "shift+ctrl",
   "mode": "hold",
   "auto_send": true,
   "active_model": "GigaAM v3",
@@ -17,6 +17,13 @@
       "type": "vosk",
       "language": "ru",
       "size": "87 MB"
+    },
+    {
+      "name": "vosk-model-small-en-us-0.15",
+      "path": "D:/OpenCode_Arhive/Voice models/vosk-model-small-en-us-0.15",
+      "type": "vosk",
+      "language": "ru",
+      "size": ""
     }
   ],
   "auto_start": true,
