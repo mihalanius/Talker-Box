@@ -388,6 +388,19 @@ class MainWindow(QMainWindow):
         self._captured_keys = set()
         self.hotkey_btn.setText("Нажмите комбинацию...")
         self.hotkey_btn.setStyleSheet("background-color: #00ff88; color: #000; border: 1px solid #00ff88; border-radius: 5px; font-weight: bold;")
+        self.hotkey_btn.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj == self.hotkey_btn and self._capturing_hotkey:
+            if event.type() == event.Type.KeyPress:
+                vk = event.nativeVirtualKey()
+                self._captured_keys.add(vk)
+                if len(self._captured_keys) >= 2:
+                    self._finish_hotkey_capture()
+                else:
+                    self.hotkey_btn.setText("Добавьте ещё клавишу...")
+                return True
+        return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event):
         if not self._capturing_hotkey:
