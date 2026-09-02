@@ -32,7 +32,7 @@ class WaveformWindow(QWidget):
         self.hide()
 
     def tick(self):
-        self.phase += 0.3
+        self.phase += 0.5
         self.update()
 
     def paintEvent(self, event):
@@ -49,13 +49,14 @@ class WaveformWindow(QWidget):
         sx = (w - total) / 2
 
         for i in range(n):
-            v = math.sin(self.phase + i * 0.4) * 0.5
-            v += math.sin(self.phase * 1.3 + i * 0.3) * 0.3
-            bh = max(3, abs(v) * h * 0.7)
+            v = math.sin(self.phase + i * 0.5) * 0.6
+            v += math.sin(self.phase * 2.1 + i * 0.35) * 0.4
+            v += math.sin(self.phase * 0.8 + i * 0.7) * 0.25
+            bh = max(4, abs(v) * h * 0.85)
             x = sx + i * (bw + gap)
             y = (h - bh) / 2
-            c = int(150 + abs(v) * 105)
-            p.setBrush(QColor(0, c, 100, 220))
+            c = int(140 + abs(v) * 115)
+            p.setBrush(QColor(0, c, 100, 230))
             p.setPen(Qt.PenStyle.NoPen)
             p.drawRoundedRect(int(x), int(y), int(bw), int(bh), 2, 2)
         p.end()
