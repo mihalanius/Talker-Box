@@ -1,8 +1,7 @@
 import math
-import random
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPainter, QColor, QPen
+from PyQt6.QtGui import QPainter, QColor
 
 class WaveformWindow(QWidget):
     def __init__(self):
@@ -14,78 +13,49 @@ class WaveformWindow(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-        self.setFixedSize(300, 60)
-        self._center_on_screen()
-
+        self.setFixedSize(300, 50)
         self.phase = 0.0
-        self.bars = 30
-        self.is_visible = False
-        self._target_heights = [0.0] * self.bars
-        self._current_heights = [0.0] * self.bars
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.animate)
-        self.timer.setInterval(30)
-
-    def _center_on_screen(self):
-        screen = self.screen()
-        if screen:
-            geo = screen.geometry()
-            x = (geo.width() - self.width()) // 2
-            y = geo.height() - self.height() - 60
-            self.move(x, y)
+        self.active = False
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.tick)
+        self.timer.setInterval(40)
 
     def show_wave(self):
-        self.is_visible = True
         self.phase = 0.0
-        self._target_heights = [random.uniform(0.2, 1.0) for _ in range(self.bars)]
+        self.active = True
         self.show()
         self.timer.start()
 
     def hide_wave(self):
-        self.is_visible = False
+        self.active = False
         self.timer.stop()
         self.hide()
 
-    def animate(self):
-        self.phase += 0.2
-
-        if random.random() < 0.3:
-            idx = random.randint(0, self.bars - 1)
-            self._target_heights[idx] = random.uniform(0.15, 1.0)
-
-        for i in range(self.bars):
-            wave = math.sin(self.phase + i * 0.4) * 0.4
-            wave += math.sin(self.phase * 1.7 + i * 0.25) * 0.25
-            wave += math.sin(self.phase * 0.6 + i * 0.6) * 0.15
-            target = (abs(wave) * 0.5 + self._target_heights[i] * 0.5)
-            self._current_heights[i] += (target - self._current_heights[i]) * 0.3
-
+    def tick(self):
+        self.phase += 0.3
         self.update()
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.fillRect(self.rect(), QColor(15, 15, 30, 200))
 
-        painter.setBrush(QColor(20, 20, 40, 200))
-        painter.setPen(QPen(QColor(0, 255, 136, 60), 1))
-        painter.drawRoundedRect(0, 0, self.width(), self.height(), 8, 8)
+        w = self.width()
+        h = self.height()
+        n = 25
+        bw = w / (n * 1.5)
+        gap = bw * 0.5
+        total = n * (bw + gap)
+        sx = (w - total) / 2
 
-        bar_w = self.width() / (self.bars * 1.4)
-        gap = bar_w * 0.4
-        total = self.bars * (bar_w + gap)
-        start_x = (self.width() - total) / 2
-
-        for i in range(self.bars):
-            x = start_x + i * (bar_w + gap)
-            h = max(3, self._current_heights[i] * self.height() * 0.7)
-            y = (self.height() - h) / 2
-
-            g = int(180 + self._current_heights[i] * 75)
-            color = QColor(0, g, 136, 220)
-            painter.setBrush(color)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawRoundedRect(int(x), int(y), int(bar_w), int(h), 2, 2)
-
-        painter.end()
+        for i in range(n):
+            v = math.sin(self.phase + i * 0.4) * 0.5
+            v += math.sin(self.phase * 1.3 + i * 0.3) * 0.3
+            bh = max(3, abs(v) * h * 0.7)
+            x = sx + i * (bw + gap)
+            y = (h - bh) / 2
+            c = int(150 + abs(v) * 105)
+            p.setBrush(QColor(0, c, 100, 220))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawRoundedRect(int(x), int(y), int(bw), int(bh), 2, 2)
+        p.end()
