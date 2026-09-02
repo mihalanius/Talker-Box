@@ -132,10 +132,11 @@ class MainWindow(QMainWindow):
         
         hotkey_layout = QHBoxLayout()
         hotkey_layout.addWidget(QLabel("Горячая клавиша:"))
-        self.hotkey_input = QLineEdit(self.settings.get("hotkey"))
-        self.hotkey_input.setPlaceholderText("ctrl+win")
-        self.hotkey_input.returnPressed.connect(self.on_hotkey_changed)
-        hotkey_layout.addWidget(self.hotkey_input)
+        self.hotkey_btn = QPushButton(self.settings.get("hotkey", "ctrl+win").upper())
+        self.hotkey_btn.setFixedHeight(30)
+        self.hotkey_btn.clicked.connect(self.start_hotkey_capture)
+        self._capturing_hotkey = False
+        hotkey_layout.addWidget(self.hotkey_btn)
         settings_layout.addLayout(hotkey_layout)
         
         settings_group.setLayout(settings_layout)
@@ -270,24 +271,46 @@ class MainWindow(QMainWindow):
             self._poll_timer.timeout.connect(self._poll_hotkey)
             self._poll_timer.setInterval(50)
             self._poll_timer.start()
+            self._hotkey_vks = self._parse_hotkey(self.settings.get("hotkey", "ctrl+win"))
         except Exception as e:
             print(f"Hotkey error: {e}")
 
+    def _parse_hotkey(self, hotkey_str):
+        VK_MAP = {
+            "ctrl": 0x11, "shift": 0x10, "alt": 0x12,
+            "win": 0x5B, "lwin": 0x5B, "rwin": 0x5C,
+            "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
+            "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
+            "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
+            "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
+            "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59, "z": 0x5A,
+            "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
+            "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
+            "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+            "space": 0x20, "enter": 0x0D, "esc": 0x1B,
+            "tab": 0x09, "capslock": 0x14,
+        }
+        vks = []
+        for part in hotkey_str.lower().split("+"):
+            part = part.strip()
+            vk = VK_MAP.get(part)
+            if vk:
+                vks.append(vk)
+            elif len(part) == 1:
+                vks.append(ord(part.upper()))
+        return vks
+
     def _poll_hotkey(self):
         try:
-            VK_CONTROL = 0x11
-            VK_LWIN = 0x5B
-            VK_RWIN = 0x5C
+            all_pressed = all(
+                bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
+                for vk in self._hotkey_vks
+            ) if self._hotkey_vks else False
 
-            ctrl_pressed = bool(self._user32.GetAsyncKeyState(VK_CONTROL) & 0x8000)
-            win_pressed = bool(self._user32.GetAsyncKeyState(VK_LWIN) & 0x8000) or \
-                          bool(self._user32.GetAsyncKeyState(VK_RWIN) & 0x8000)
-
-            hotkey_down = ctrl_pressed and win_pressed
             prev = self._key_states.get("hotkey", False)
-            self._key_states["hotkey"] = hotkey_down
+            self._key_states["hotkey"] = all_pressed
 
-            if hotkey_down and not prev:
+            if all_pressed and not prev:
                 if self.settings.get("mode") == "toggle":
                     if self.is_recording:
                         self.stop_recording()
@@ -298,7 +321,7 @@ class MainWindow(QMainWindow):
                         self.start_recording()
                         self.hold_mode = True
 
-            if not hotkey_down and prev:
+            if not all_pressed and prev:
                 if self.hold_mode and self.is_recording:
                     self.hold_mode = False
                     self.stop_recording()
@@ -360,10 +383,54 @@ class MainWindow(QMainWindow):
     def on_auto_send_changed(self, state):
         self.settings.set("auto_send", state == Qt.CheckState.Checked.value)
     
-    def on_hotkey_changed(self):
-        hotkey = self.hotkey_input.text().strip()
-        if hotkey:
-            self.settings.set("hotkey", hotkey)
+    def start_hotkey_capture(self):
+        self._capturing_hotkey = True
+        self._captured_keys = set()
+        self.hotkey_btn.setText("Нажмите комбинацию...")
+        self.hotkey_btn.setStyleSheet("background-color: #00ff88; color: #000; border: 1px solid #00ff88; border-radius: 5px; font-weight: bold;")
+
+    def keyPressEvent(self, event):
+        if not self._capturing_hotkey:
+            return super().keyPressEvent(event)
+
+        key = event.key()
+        vk = event.nativeVirtualKey()
+        self._captured_keys.add(vk)
+
+        if len(self._captured_keys) >= 2:
+            self._finish_hotkey_capture()
+        else:
+            self.hotkey_btn.setText("Добавьте ещё клавишу...")
+
+    def keyReleaseEvent(self, event):
+        if not self._capturing_hotkey:
+            return super().keyReleaseEvent(event)
+
+    def _finish_hotkey_capture(self):
+        self._capturing_hotkey = False
+        VK_NAMES = {
+            0x11: "ctrl", 0x10: "shift", 0x12: "alt",
+            0x5B: "win", 0x5C: "win",
+            0x41: "a", 0x42: "b", 0x43: "c", 0x44: "d", 0x45: "e",
+            0x46: "f", 0x47: "g", 0x48: "h", 0x49: "i", 0x4A: "j",
+            0x4B: "k", 0x4C: "l", 0x4D: "m", 0x4E: "n", 0x4F: "o",
+            0x50: "p", 0x51: "q", 0x52: "r", 0x53: "s", 0x54: "t",
+            0x55: "u", 0x56: "v", 0x57: "w", 0x58: "x", 0x59: "y", 0x5A: "z",
+            0x70: "f1", 0x71: "f2", 0x72: "f3", 0x73: "f4",
+            0x74: "f5", 0x75: "f6", 0x76: "f7", 0x77: "f8",
+            0x78: "f9", 0x79: "f10", 0x7A: "f11", 0x7B: "f12",
+            0x20: "space", 0x0D: "enter", 0x1B: "esc",
+            0x09: "tab", 0x14: "capslock",
+        }
+        parts = []
+        for vk in sorted(self._captured_keys):
+            name = VK_NAMES.get(vk, chr(vk) if 32 <= vk < 127 else f"vk{vk}")
+            parts.append(name)
+        combo = "+".join(parts)
+        self.settings.set("hotkey", combo)
+        self.hotkey_btn.setText(combo.upper())
+        self.hotkey_btn.setStyleSheet("")
+        self.init_hotkey()
     
     def on_waveform_changed(self, state):
         pass
