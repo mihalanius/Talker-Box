@@ -189,14 +189,7 @@ class MainWindow(QMainWindow):
         self.waveform = WaveformWindow()
     
     def init_level_monitor(self):
-        self.level_timer = QTimer()
-        self.level_timer.timeout.connect(self.update_level)
-        self.level_timer.setInterval(33)
-    
-    def update_level(self):
-        if self.is_recording and self.recorder.is_recording:
-            level = self.recorder.get_level()
-            self.waveform.set_level(level * 3 + 0.05)
+        pass
     
     def check_ads(self):
         if self.ad_manager.should_show():
