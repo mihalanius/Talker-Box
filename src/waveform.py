@@ -13,7 +13,7 @@ class WaveformWindow(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setFixedSize(300, 50)
+        self.setFixedSize(150, 25)
         self.phase = 0.0
         self.active = False
         self.timer = QTimer(self)
