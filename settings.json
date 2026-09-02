@@ -1,7 +1,7 @@
 {
   "hotkey": "ctrl+win",
   "mode": "hold",
-  "auto_send": false,
+  "auto_send": true,
   "active_model": "GigaAM v3",
   "models": [
     {
