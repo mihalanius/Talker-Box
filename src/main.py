@@ -195,13 +195,8 @@ class MainWindow(QMainWindow):
     
     def update_level(self):
         if self.is_recording and self.recorder.is_recording:
-            audio = self.recorder.get_audio()
-            if len(audio) > 0:
-                import numpy as np
-                level = np.abs(audio).mean() / 32768.0
-                self.waveform.set_level(level * 3)
-            else:
-                self.waveform.set_level(0.1)
+            level = self.recorder.get_level()
+            self.waveform.set_level(level * 3 + 0.05)
     
     def check_ads(self):
         if self.ad_manager.should_show():

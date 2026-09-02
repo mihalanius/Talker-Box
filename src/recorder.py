@@ -36,13 +36,20 @@ class Recorder:
             self.stream = None
         return self.get_audio()
 
+    def get_level(self):
+        items = []
+        while not self.audio_queue.empty():
+            items.append(self.audio_queue.get())
+        for item in items:
+            self.audio_queue.put(item)
+        if items:
+            audio = np.concatenate(items, axis=0)
+            return float(np.abs(audio).mean()) / 32768.0
+        return 0.0
+
     def get_audio(self):
         while not self.audio_queue.empty():
             self.frames.append(self.audio_queue.get())
         if self.frames:
             return np.concatenate(self.frames, axis=0)
         return np.array([], dtype=np.int16)
-
-    def get_audio_bytes(self):
-        audio = self.get_audio()
-        return audio.tobytes()
