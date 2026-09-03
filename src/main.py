@@ -80,27 +80,6 @@ class NeonGroupBox(QWidget):
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
 
-        dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        painter.setPen(dash_pen)
-        painter.drawLine(s + 2, h - 1, w - s - 2, h - 1)
-        painter.drawLine(1, s + 2, 1, h - s - 2)
-        painter.drawLine(w - 1, s + 2, w - 1, h - s - 2)
-
-        if self._title:
-            font = QFont("Segoe UI", 10, QFont.Weight.Bold)
-            painter.setFont(font)
-            fm = painter.fontMetrics()
-            text_w = fm.horizontalAdvance(self._title) + 16
-            painter.drawLine(s + 2, 1, text_w, 1)
-            painter.drawLine(text_w + 4, 1, w - s - 2, 1)
-            painter.setPen(QPen(self._color))
-            painter.setClipping(False)
-            painter.drawText(s + 6, -2, self._title)
-        else:
-            painter.drawLine(s + 2, 1, w - s - 2, 1)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
         painter.end()
 
 class Signals(QObject):
