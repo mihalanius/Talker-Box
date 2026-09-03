@@ -53,9 +53,23 @@ class NeonGroupBox(QWidget):
         self._color = QColor(color)
         self._corner_size = corner_size
         self._thickness = thickness
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(15, 20, 10, 10)
         self.setStyleSheet("background: transparent;")
+
+        self._outer_layout = QVBoxLayout(self)
+        self._outer_layout.setContentsMargins(0, 0, 0, 0)
+        self._outer_layout.setSpacing(0)
+
+        if title:
+            self._title_label = QLabel(title)
+            self._title_label.setStyleSheet(f"color: {color}; background: transparent; font: bold 10px 'Segoe UI';")
+            self._title_label.setFixedHeight(16)
+            self._outer_layout.addWidget(self._title_label, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self._inner = QWidget()
+        self._inner.setStyleSheet("background: transparent;")
+        self._layout = QVBoxLayout(self._inner)
+        self._layout.setContentsMargins(15, 5, 10, 10)
+        self._outer_layout.addWidget(self._inner)
 
     def layout(self):
         return self._layout
@@ -67,7 +81,6 @@ class NeonGroupBox(QWidget):
         w = self.width()
         h = self.height()
         s = self._corner_size
-        gap = 8
 
         pen = QPen(self._color, self._thickness)
         painter.setPen(pen)
@@ -82,26 +95,17 @@ class NeonGroupBox(QWidget):
 
         dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
         painter.setPen(dash_pen)
-        painter.drawLine(s + gap, h, w - s - gap, h)
-        painter.drawLine(0, s + gap, 0, h - s - gap)
-        painter.drawLine(w, s + gap, w, h - s - gap)
+        painter.drawLine(s + 2, h - 1, w - s - 2, h - 1)
+        painter.drawLine(1, s + 2, 1, h - s - 2)
+        painter.drawLine(w - 1, s + 2, w - 1, h - s - 2)
 
         if self._title:
-            font = QFont("Segoe UI", 10)
-            painter.setFont(font)
             fm = painter.fontMetrics()
-            text_w = fm.horizontalAdvance(self._title)
-            text_h = fm.height()
-            text_x = s + gap + 4
-            text_y = text_h // 2
-            painter.setPen(QPen(self._color))
-            painter.drawText(text_x, text_y, self._title)
-            dash_end_x = text_x + text_w + 6
-            painter.setPen(dash_pen)
-            painter.drawLine(dash_end_x, 0, w - s - gap, 0)
-            painter.drawLine(s + gap, 0, text_x - 4, 0)
+            text_w = fm.horizontalAdvance(self._title) + 16
+            painter.drawLine(s + 2, 1, text_w, 1)
+            painter.drawLine(text_w + 4, 1, w - s - 2, 1)
         else:
-            painter.drawLine(s + gap, 0, w - s - gap, 0)
+            painter.drawLine(s + 2, 1, w - s - 2, 1)
 
         painter.end()
 
@@ -258,10 +262,13 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
         
+        btn_style = "color: #00ff88; background: transparent; border: none; font: 10px 'Segoe UI';"
+        
         add_frame = NeonFrame(corner_size=6, thickness=2)
         add_frame_layout = QVBoxLayout(add_frame)
-        add_frame_layout.setContentsMargins(12, 10, 12, 10)
+        add_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.add_model_btn = QPushButton("+ Добавить")
+        self.add_model_btn.setStyleSheet(btn_style)
         self.add_model_btn.setFixedHeight(18)
         self.add_model_btn.clicked.connect(self.add_model)
         add_frame_layout.addWidget(self.add_model_btn)
@@ -269,8 +276,9 @@ class MainWindow(QMainWindow):
         
         remove_frame = NeonFrame(corner_size=6, thickness=2)
         remove_frame_layout = QVBoxLayout(remove_frame)
-        remove_frame_layout.setContentsMargins(12, 10, 12, 10)
+        remove_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.remove_model_btn = QPushButton("- Удалить")
+        self.remove_model_btn.setStyleSheet(btn_style)
         self.remove_model_btn.setFixedHeight(18)
         self.remove_model_btn.clicked.connect(self.remove_model)
         remove_frame_layout.addWidget(self.remove_model_btn)
@@ -278,8 +286,9 @@ class MainWindow(QMainWindow):
         
         select_frame = NeonFrame(corner_size=6, thickness=2)
         select_frame_layout = QVBoxLayout(select_frame)
-        select_frame_layout.setContentsMargins(12, 10, 12, 10)
+        select_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.set_active_btn = QPushButton("Выбрать")
+        self.set_active_btn.setStyleSheet(btn_style)
         self.set_active_btn.setFixedHeight(18)
         self.set_active_btn.clicked.connect(self.set_active_model)
         select_frame_layout.addWidget(self.set_active_btn)
