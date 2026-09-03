@@ -192,8 +192,7 @@ class MainWindow(QMainWindow):
             QListWidget {
                 background-color: #16213e;
                 color: #eee;
-                border: 1px dashed #00f7ff;
-                border-radius: 3px;
+                border: none;
             }
         """)
         
@@ -254,12 +253,17 @@ class MainWindow(QMainWindow):
         model_group = NeonGroupBox("Модели")
         model_layout = model_group.layout()
         
+        model_list_frame = NeonFrame(corner_size=6, thickness=2)
+        model_list_frame_layout = QVBoxLayout(model_list_frame)
+        model_list_frame_layout.setContentsMargins(4, 4, 4, 4)
+        
         self.model_list = QListWidget()
         self.model_list.setFixedHeight(28)
         self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
-        model_layout.addWidget(self.model_list)
+        model_list_frame_layout.addWidget(self.model_list)
+        model_layout.addWidget(model_list_frame)
         
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
@@ -270,7 +274,7 @@ class MainWindow(QMainWindow):
                 background: transparent;
                 border: 1px solid #00ff88;
                 border-radius: 2px;
-                font: 10px 'Segoe UI';
+                font: bold 11px 'Segoe UI';
                 padding: 2px 8px;
             }
             QPushButton:hover {
