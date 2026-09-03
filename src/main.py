@@ -94,6 +94,7 @@ class NeonGroupBox(QWidget):
             painter.drawLine(s + 2, 1, text_w, 1)
             painter.drawLine(text_w + 4, 1, w - s - 2, 1)
             painter.setPen(QPen(self._color))
+            painter.setClipping(False)
             painter.drawText(s + 6, -2, self._title)
         else:
             painter.drawLine(s + 2, 1, w - s - 2, 1)
