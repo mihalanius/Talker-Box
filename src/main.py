@@ -492,9 +492,6 @@ class MainWindow(QMainWindow):
                         self.hold_mode = True
 
             if not all_pressed and prev:
-                if now - self._last_toggle_time < 0.3:
-                    return
-                self._last_toggle_time = now
                 if self.hold_mode and self.is_recording:
                     self.hold_mode = False
                     self.stop_recording()
