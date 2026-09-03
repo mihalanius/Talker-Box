@@ -76,6 +76,20 @@ class MainWindow(QMainWindow):
                 selection-color: #ffffff;
                 border: 1px solid #00f7ff;
             }
+            QScrollBar:vertical {
+                background: #16213e;
+                width: 8px;
+                border: 1px solid #00ff88;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #00ff88;
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
             QCheckBox { color: #eee; }
             QGroupBox {
                 color: #00f7ff;
