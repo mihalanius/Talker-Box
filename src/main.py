@@ -105,6 +105,49 @@ class NeonGroupBox(QWidget):
 
         painter.end()
 
+class TaperedBar(QWidget):
+    def __init__(self, parent=None, color="#333", height=5):
+        super().__init__(parent)
+        self._color = QColor(color)
+        self.setFixedHeight(height)
+
+    def set_color(self, color):
+        self._color = QColor(color)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+        cy = h / 2
+        taper = min(h, 20)
+
+        gradient = QLinearGradient(0, 0, w, 0)
+        c = self._color
+        gradient.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 0))
+        gradient.setColorAt(0.15, QColor(c.red(), c.green(), c.blue(), 255))
+        gradient.setColorAt(0.85, QColor(c.red(), c.green(), c.blue(), 255))
+        gradient.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(gradient))
+
+        path = QPainterPath()
+        path.moveTo(taper, 0)
+        path.lineTo(w - taper, 0)
+        path.quadTo(w, 0, w, cy)
+        path.quadTo(w, h, w - taper, h)
+        path.lineTo(taper, h)
+        path.quadTo(0, h, 0, cy)
+        path.quadTo(0, 0, taper, 0)
+        path.closeSubpath()
+
+        painter.drawPath(path)
+        painter.end()
+
+
 class Signals(QObject):
     text_ready = pyqtSignal(str)
     recording_started = pyqtSignal()
@@ -303,9 +346,7 @@ class MainWindow(QMainWindow):
         model_layout.addLayout(btn_layout)
         layout.addWidget(model_group)
         
-        self.mic_indicator = QLabel()
-        self.mic_indicator.setFixedHeight(5)
-        self.mic_indicator.setStyleSheet("background-color: #333;")
+        self.mic_indicator = TaperedBar(color="#333", height=5)
         layout.addWidget(self.mic_indicator)
         
         self.ad_banner = QLabel()
@@ -505,13 +546,13 @@ class MainWindow(QMainWindow):
             pass
     
     def on_recording_started(self):
-        self.mic_indicator.setStyleSheet("background-color: #00ff88;")
+        self.mic_indicator.set_color("#00ff88")
         self.tray.setIcon(self.create_mic_icon("#00ff88"))
     
     def on_recording_stopped(self):
-        self.mic_indicator.setStyleSheet("background-color: #ff8800;")
-        self.tray.setIcon(self.create_mic_icon("#ff8800"))
-        QTimer.singleShot(1000, lambda: self.mic_indicator.setStyleSheet("background-color: #333;"))
+        self.mic_indicator.set_color("#00f7ff")
+        self.tray.setIcon(self.create_mic_icon("#00f7ff"))
+            QTimer.singleShot(1000, lambda: self.mic_indicator.set_color("#333"))
     
     def on_mode_changed(self, index):
         mode = "hold" if index == 0 else "toggle"
