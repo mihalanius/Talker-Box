@@ -157,6 +157,7 @@ class MainWindow(QMainWindow):
         self.signals = Signals()
         self.is_recording = False
         self.hold_mode = False
+        self._suppress_hotkey = False
         
         self.signals.text_ready.connect(self.on_text_ready)
         self.signals.recording_started.connect(self.on_recording_started)
@@ -463,6 +464,8 @@ class MainWindow(QMainWindow):
             print(f"Hook error: {e}")
 
     def _on_hotkey_toggle(self):
+        if self._suppress_hotkey:
+            return
         now = time.time()
         if now - self._last_toggle_time < 0.8:
             return
@@ -548,6 +551,7 @@ class MainWindow(QMainWindow):
     
     def on_text_ready(self, text):
         import pyperclip
+        self._suppress_hotkey = True
         pyperclip.copy(text)
         time.sleep(0.15)
 
@@ -574,6 +578,9 @@ class MainWindow(QMainWindow):
                 user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
         except Exception as e:
             print(f"Send error: {e}")
+        finally:
+            time.sleep(0.3)
+            self._suppress_hotkey = False
     
     def on_recording_started(self):
         self.mic_indicator.set_color("#00ff88")
