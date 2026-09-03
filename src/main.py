@@ -339,7 +339,11 @@ class MainWindow(QMainWindow):
     
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(self.create_mic_icon("#00f7ff"))
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.ico")
+        if os.path.exists(icon_path):
+            self.tray.setIcon(QIcon(icon_path))
+        else:
+            self.tray.setIcon(self.create_mic_icon("#00f7ff"))
         
         tray_menu = QMenu()
         
