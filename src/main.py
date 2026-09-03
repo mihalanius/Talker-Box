@@ -133,7 +133,7 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setFixedSize(400, 450)
+        self.setMinimumSize(400, 350)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
@@ -246,6 +246,9 @@ class MainWindow(QMainWindow):
         model_layout = model_group.layout()
         
         self.model_list = QListWidget()
+        self.model_list.setMaximumHeight(120)
+        self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
         model_layout.addWidget(self.model_list)
         
