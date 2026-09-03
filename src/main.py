@@ -131,6 +131,8 @@ class TaperedBar(QLabel):
 
     def _hex_to_rgb(self, hex_color):
         h = hex_color.lstrip('#')
+        if len(h) == 3:
+            h = h[0]*2 + h[1]*2 + h[2]*2
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         return f"{r},{g},{b}"
 
