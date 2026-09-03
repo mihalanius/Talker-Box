@@ -2,6 +2,8 @@ import sys
 import os
 import time
 import threading
+import subprocess
+import queue
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
@@ -16,6 +18,7 @@ from ad_manager import AdManager
 from waveform import WaveformWindow
 from sounds import play_start_sound, play_stop_sound
 
+
 class NeonFrame(QFrame):
     def __init__(self, parent=None, color="#00ff88", corner_size=12, thickness=2):
         super().__init__(parent)
@@ -29,11 +32,7 @@ class NeonFrame(QFrame):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(self._color, self._thickness)
         painter.setPen(pen)
-
-        w = self.width()
-        h = self.height()
-        s = self._corner_size
-
+        w, h, s = self.width(), self.height(), self._corner_size
         painter.drawLine(0, s, 0, 0)
         painter.drawLine(0, 0, s, 0)
         painter.drawLine(w - s, 0, w, 0)
@@ -42,7 +41,6 @@ class NeonFrame(QFrame):
         painter.drawLine(0, h, s, h)
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
-
         painter.end()
 
 
@@ -78,11 +76,7 @@ class NeonGroupBox(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        w = self.width()
-        h = self.height()
-        s = self._corner_size
-
+        w, h, s = self.width(), self.height(), self._corner_size
         pen = QPen(self._color, self._thickness)
         painter.setPen(pen)
         painter.drawLine(0, s, 0, 0)
@@ -93,7 +87,6 @@ class NeonGroupBox(QWidget):
         painter.drawLine(0, h, s, h)
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
-
         if self._title:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
             dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
@@ -102,8 +95,8 @@ class NeonGroupBox(QWidget):
             text_w = fm.horizontalAdvance(self._title) + 20
             painter.drawLine(text_w, 8, w - s - 4, 8)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-
         painter.end()
+
 
 class TaperedBar(QLabel):
     def __init__(self, parent=None, color="#333", height=5):
@@ -141,40 +134,189 @@ class Signals(QObject):
     text_ready = pyqtSignal(str)
     recording_started = pyqtSignal()
     recording_stopped = pyqtSignal()
-    hotkey_pressed = pyqtSignal()
-    hotkey_released = pyqtSignal()
+    transcribing_started = pyqtSignal()
+    transcribing_finished = pyqtSignal()
+
+
+def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
+    import ctypes
+    import ctypes.wintypes
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    class INPUT(ctypes.Structure):
+        pass
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", ctypes.wintypes.WORD),
+            ("wScan", ctypes.wintypes.WORD),
+            ("dwFlags", ctypes.wintypes.DWORD),
+            ("time", ctypes.wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.wintypes.LONG),
+            ("dy", ctypes.wintypes.LONG),
+            ("mouseData", ctypes.wintypes.DWORD),
+            ("dwFlags", ctypes.wintypes.DWORD),
+            ("time", ctypes.wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", ctypes.wintypes.DWORD),
+            ("wParamL", ctypes.wintypes.WORD),
+            ("wParamH", ctypes.wintypes.WORD),
+        ]
+
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [
+            ("ki", KEYBDINPUT),
+            ("mi", MOUSEINPUT),
+            ("hi", HARDWAREINPUT),
+        ]
+
+    INPUT._fields_ = [
+        ("type", ctypes.wintypes.DWORD),
+        ("union", _INPUT_UNION),
+    ]
+
+    INPUT_KEYBOARD = 1
+    KEYEVENTF_KEYUP = 0x0002
+    KEYEVENTF_UNICODE = 0x0004
+
+    def send_key(vk, flags=0):
+        inp = INPUT()
+        inp.type = INPUT_KEYBOARD
+        inp.union.ki.wVk = vk
+        inp.union.ki.dwFlags = flags
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+    def send_unicode(ch):
+        inp = INPUT()
+        inp.type = INPUT_KEYBOARD
+        inp.union.ki.wVk = 0
+        inp.union.ki.wScan = ord(ch)
+        inp.union.ki.dwFlags = KEYEVENTF_UNICODE
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+    VK_CONTROL = 0x11
+    VK_V = 0x56
+    VK_RETURN = 0x0D
+    VK_LSHIFT = 0xA0
+
+    if is_terminal:
+        send_key(VK_LSHIFT)
+        send_key(VK_CONTROL)
+        time.sleep(0.03)
+        send_key(VK_V)
+        time.sleep(0.03)
+        send_key(VK_V, KEYEVENTF_KEYUP)
+        send_key(VK_CONTROL, KEYEVENTF_KEYUP)
+        send_key(VK_LSHIFT, KEYEVENTF_KEYUP)
+    else:
+        send_key(VK_CONTROL)
+        time.sleep(0.03)
+        send_key(VK_V)
+        time.sleep(0.03)
+        send_key(VK_V, KEYEVENTF_KEYUP)
+        send_key(VK_CONTROL, KEYEVENTF_KEYUP)
+
+    if auto_send:
+        time.sleep(0.15)
+        send_key(VK_RETURN)
+        time.sleep(0.03)
+        send_key(VK_RETURN, KEYEVENTF_KEYUP)
+
+
+TERMINAL_CLASSES = {
+    "ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS",
+    "mintty", "VirtualConsoleClass", "Alacritty",
+    "org.wezfurlong.wezterm",
+}
+TERMINAL_EXES = {
+    "tabby.exe", "wave.exe", "rio.exe", "termius.exe",
+}
+
+
+def _is_terminal():
+    import ctypes
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return False
+
+    class INFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", ctypes.wintypes.DWORD),
+            ("threadId", ctypes.wintypes.DWORD),
+            ("hwndOwner", ctypes.wintypes.HWND),
+        ]
+
+    try:
+        pid = ctypes.wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, buf, 256)
+        cls = buf.value
+
+        if cls in TERMINAL_CLASSES:
+            return True
+
+        exe_buf = ctypes.create_unicode_buffer(260)
+        handle = kernel32.OpenProcess(0x0400, False, pid.value)
+        if handle:
+            kernel32.GetModuleFileNameW(handle, exe_buf, 260)
+            kernel32.CloseHandle(handle)
+            exe = os.path.basename(exe_buf.value).lower()
+            if exe in TERMINAL_EXES:
+                return True
+    except:
+        pass
+    return False
+
 
 class MainWindow(QMainWindow):
-    _hotkey_signal = pyqtSignal()
+    _hotkey_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-        self._hotkey_signal.connect(self._on_hotkey_toggle, Qt.ConnectionType.QueuedConnection)
+        self._hotkey_signal.connect(self._on_hotkey_event, Qt.ConnectionType.QueuedConnection)
         self.settings = SettingsManager()
         self.recorder = Recorder()
         self.transcriber = None
         self.ad_manager = AdManager()
         self.signals = Signals()
         self.is_recording = False
+        self.is_transcribing = False
         self.hold_mode = False
         self._suppress_hotkey = False
-        
+        self._listener_proc = None
+        self._listener_reader = None
+
         self.signals.text_ready.connect(self.on_text_ready)
         self.signals.recording_started.connect(self.on_recording_started)
         self.signals.recording_stopped.connect(self.on_recording_stopped)
-        
+        self.signals.transcribing_started.connect(self.on_transcribing_started)
+        self.signals.transcribing_finished.connect(self.on_transcribing_finished)
+
         self.init_ui()
         self.init_tray()
         self.init_hotkey()
         self.load_active_model()
         self.init_ad_timer()
         self.init_waveform()
-        self.init_level_monitor()
         self.show()
-        
+
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
             QTimer.singleShot(100, self.hide_to_tray)
-    
+
     def init_ui(self):
         self.setWindowTitle("Talker Box")
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
@@ -233,20 +375,20 @@ class MainWindow(QMainWindow):
                 border: none;
             }
         """)
-        
+
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        
+
         hint_label = QLabel("Сверните Talker Box в трей → Откройте программу, наведите курсор на поле ввода текста → Нажмите горячую клавишу и начните говорить.")
         hint_label.setWordWrap(True)
         hint_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 8px 12px; background-color: #1a1b26; border: 1px solid #00ff88; border-radius: 5px;")
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint_label)
-        
+
         settings_group = NeonGroupBox("Настройки")
         settings_layout = settings_group.layout()
-        
+
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(QLabel("Режим:"))
         self.mode_combo = QComboBox()
@@ -255,7 +397,7 @@ class MainWindow(QMainWindow):
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
         mode_layout.addWidget(self.mode_combo)
         settings_layout.addLayout(mode_layout)
-        
+
         self.auto_send_cb = QCheckBox("Авто-отправка (Enter)")
         self.auto_send_cb.setChecked(self.settings.get("auto_send"))
         self.auto_send_cb.stateChanged.connect(self.on_auto_send_changed)
@@ -276,35 +418,35 @@ class MainWindow(QMainWindow):
             }
         """)
         settings_layout.addWidget(self.auto_send_cb)
-        
+
         hotkey_layout = QHBoxLayout()
         hotkey_layout.addWidget(QLabel("Горячая клавиша:"))
-        self.hotkey_btn = QPushButton(self.settings.get("hotkey", "ctrl+win").upper())
+        self.hotkey_btn = QPushButton(self.settings.get("hotkey", "f9").upper())
         self.hotkey_btn.setFixedHeight(30)
         self.hotkey_btn.clicked.connect(self.start_hotkey_capture)
         self._capturing_hotkey = False
         hotkey_layout.addWidget(self.hotkey_btn)
         settings_layout.addLayout(hotkey_layout)
-        
+
         layout.addWidget(settings_group)
-        
+
         model_group = NeonGroupBox("Модели")
         model_layout = model_group.layout()
-        
+
         model_list_frame = NeonFrame(corner_size=6, thickness=2)
         model_list_frame_layout = QVBoxLayout(model_list_frame)
         model_list_frame_layout.setContentsMargins(4, 4, 4, 4)
-        
+
         self.model_list = QListWidget()
         self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
         model_list_frame_layout.addWidget(self.model_list)
         model_layout.addWidget(model_list_frame)
-        
+
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
-        
+
         btn_style = """
             QPushButton {
                 color: #00ff88;
@@ -319,31 +461,31 @@ class MainWindow(QMainWindow):
                 background: #00ff88;
             }
         """
-        
+
         self.add_model_btn = QPushButton("+ Добавить")
         self.add_model_btn.setStyleSheet(btn_style)
         self.add_model_btn.setFixedHeight(22)
         self.add_model_btn.clicked.connect(self.add_model)
         btn_layout.addWidget(self.add_model_btn)
-        
+
         self.remove_model_btn = QPushButton("- Удалить")
         self.remove_model_btn.setStyleSheet(btn_style)
         self.remove_model_btn.setFixedHeight(22)
         self.remove_model_btn.clicked.connect(self.remove_model)
         btn_layout.addWidget(self.remove_model_btn)
-        
+
         self.set_active_btn = QPushButton("Выбрать")
         self.set_active_btn.setStyleSheet(btn_style)
         self.set_active_btn.setFixedHeight(22)
         self.set_active_btn.clicked.connect(self.set_active_model)
         btn_layout.addWidget(self.set_active_btn)
-        
+
         model_layout.addLayout(btn_layout)
         layout.addWidget(model_group)
-        
+
         self.mic_indicator = TaperedBar(color="#333", height=5)
         layout.addWidget(self.mic_indicator)
-        
+
         self.ad_banner = QLabel()
         self.ad_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.ad_banner.setFixedHeight(100)
@@ -352,28 +494,25 @@ class MainWindow(QMainWindow):
         self.ad_banner.mousePressEvent = self.on_ad_banner_click
         layout.addWidget(self.ad_banner)
         self.update_ad_banner()
-        
-        version_label = QLabel("Версия 1.12")
+
+        version_label = QLabel("Версия 1.13")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 5px;")
         layout.addWidget(version_label)
-    
+
     def init_ad_timer(self):
         self.ad_timer = QTimer()
         self.ad_timer.timeout.connect(self.check_ads)
         self.ad_timer.start(60000)
-    
+
     def init_waveform(self):
         self.waveform = WaveformWindow()
-    
-    def init_level_monitor(self):
-        pass
-    
+
     def check_ads(self):
         if self.ad_manager.should_show():
             self.show_tray_ad()
             self.ad_manager.mark_shown()
-    
+
     def show_tray_ad(self):
         config = self.ad_manager.get_tray_config()
         if config:
@@ -383,7 +522,7 @@ class MainWindow(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information,
                 10000
             )
-    
+
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
@@ -391,33 +530,33 @@ class MainWindow(QMainWindow):
             self.tray.setIcon(QIcon(icon_path))
         else:
             self.tray.setIcon(self.create_mic_icon("#00f7ff"))
-        
+
         tray_menu = QMenu()
-        
+
         settings_action = QAction("Настройки", self)
         settings_action.triggered.connect(self.show_settings)
         tray_menu.addAction(settings_action)
-        
+
         models_action = QAction("Модели", self)
         models_action.triggered.connect(self.show_models)
         tray_menu.addAction(models_action)
-        
+
         tray_menu.addSeparator()
-        
+
         toggle_action = QAction("Вкл/Выкл запись", self)
         toggle_action.triggered.connect(self.toggle_recording)
         tray_menu.addAction(toggle_action)
-        
+
         tray_menu.addSeparator()
-        
+
         quit_action = QAction("Выход", self)
         quit_action.triggered.connect(self.quit_app)
         tray_menu.addAction(quit_action)
-        
+
         self.tray.setContextMenu(tray_menu)
         self.tray.activated.connect(self.tray_activated)
         self.tray.show()
-    
+
     def create_mic_icon(self, color):
         pixmap = QPixmap(64, 64)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -431,109 +570,117 @@ class MainWindow(QMainWindow):
         painter.drawRect(18, 44, 28, 4)
         painter.end()
         return QIcon(pixmap)
-    
+
     def init_hotkey(self):
+        self._last_toggle_time = 0
+        hotkey = self.settings.get("hotkey", "f9")
+        self._start_listener(hotkey)
+
+    def _start_listener(self, hotkey):
+        self._stop_listener()
         try:
-            import keyboard
-            self._last_toggle_time = 0
-            self._hotkey_str = self.settings.get("hotkey", "f9")
-            self._hotkey_registered = False
+            listener_path = os.path.join(os.path.dirname(__file__), "hotkey_listener.py")
+            creation = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+            self._listener_proc = subprocess.Popen(
+                [sys.executable, listener_path, hotkey],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                bufsize=1,
+                creationflags=creation,
+            )
 
-            self._register_keyboard_hook()
+            self._listener_queue = queue.Queue()
+            self._listener_thread = threading.Thread(
+                target=self._listener_read_loop, daemon=True
+            )
+            self._listener_thread.start()
 
-            self._reregister_timer = QTimer()
-            self._reregister_timer.timeout.connect(self._register_keyboard_hook)
-            self._reregister_timer.setInterval(30000)
-            self._reregister_timer.start()
+            self._listener_reader = QTimer()
+            self._listener_reader.timeout.connect(self._read_listener)
+            self._listener_reader.setInterval(30)
+            self._listener_reader.start()
 
-            print(f"Hotkey: {self._hotkey_str}")
+            print(f"Hotkey listener: {hotkey}")
         except Exception as e:
-            print(f"Hotkey error: {e}")
+            print(f"Listener error: {e}")
 
-    def _register_keyboard_hook(self):
-        try:
-            import keyboard
-            keyboard.unhook_all()
-            hotkey = self._hotkey_str
-            if "+" in hotkey or hotkey in ("ctrl", "alt", "shift", "win"):
-                keyboard.add_hotkey(hotkey, lambda: self._hotkey_signal.emit(), suppress=False, trigger_on_release=False)
-            else:
-                keyboard.on_press_key(hotkey, lambda e: self._hotkey_signal.emit())
-            self._hotkey_registered = True
-        except Exception as e:
-            print(f"Hook error: {e}")
-
-    def _on_hotkey_toggle(self):
-        if self._suppress_hotkey:
-            return
-        now = time.time()
-        if now - self._last_toggle_time < 0.8:
-            return
-        self._last_toggle_time = now
-
-        mode = self.settings.get("mode")
-        if mode == "toggle":
-            if self.is_recording:
-                self.stop_recording()
-            else:
-                self.start_recording()
-        else:
-            if not self.is_recording:
-                self.start_recording()
-                self.hold_mode = True
-
-    def init_hold_release(self):
-        if self.settings.get("mode") != "hold":
+    def _listener_read_loop(self):
+        proc = self._listener_proc
+        if not proc or not proc.stdout:
             return
         try:
-            import keyboard
-            keyboard.on_release_key(self._hotkey_str, lambda e: self._on_hotkey_release())
+            for line in iter(proc.stdout.readline, ''):
+                if line:
+                    self._listener_queue.put(line.strip())
         except:
             pass
 
-    def _on_hotkey_release(self):
-        if self.hold_mode and self.is_recording:
-            self.hold_mode = False
-            self.stop_recording()
+    def _stop_listener(self):
+        if self._listener_proc:
+            try:
+                self._listener_proc.terminate()
+                self._listener_proc.wait(timeout=1)
+            except:
+                try:
+                    self._listener_proc.kill()
+                except:
+                    pass
+            self._listener_proc = None
 
-    def _parse_hotkey(self, hotkey_str):
-        VK_MAP = {
-            "ctrl": 0x11, "shift": 0x10, "alt": 0x12,
-            "win": 0x5B, "lwin": 0x5B, "rwin": 0x5C,
-            "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
-            "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
-            "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
-            "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
-            "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59, "z": 0x5A,
-            "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
-            "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
-            "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
-            "space": 0x20, "enter": 0x0D, "esc": 0x1B,
-            "tab": 0x09, "capslock": 0x14,
-        }
-        vks = []
-        for part in hotkey_str.lower().split("+"):
-            part = part.strip()
-            vk = VK_MAP.get(part)
-            if vk:
-                vks.append(vk)
-            elif len(part) == 1:
-                vks.append(ord(part.upper()))
-        return vks
-    
+    def _read_listener(self):
+        if not hasattr(self, '_listener_queue'):
+            return
+        try:
+            while True:
+                line = self._listener_queue.get_nowait()
+                if line.startswith("KEY_DOWN"):
+                    self._hotkey_signal.emit("DOWN")
+                elif line.startswith("KEY_UP"):
+                    self._hotkey_signal.emit("UP")
+        except queue.Empty:
+            pass
+
+    def _on_hotkey_event(self, event):
+        if self._suppress_hotkey:
+            return
+
+        if event == "DOWN":
+            now = time.time()
+            if now - self._last_toggle_time < 0.5:
+                return
+            self._last_toggle_time = now
+
+            mode = self.settings.get("mode")
+            if mode == "toggle":
+                if self.is_recording:
+                    self.stop_recording()
+                else:
+                    self.start_recording()
+            else:
+                if not self.is_recording:
+                    self.start_recording()
+                    self.hold_mode = True
+
+        elif event == "UP":
+            mode = self.settings.get("mode")
+            if mode == "hold" and self.hold_mode and self.is_recording:
+                self.hold_mode = False
+                self.stop_recording()
+
     def start_recording(self):
         if not self.is_recording:
             self.is_recording = True
             self.recorder.start()
             self.signals.recording_started.emit()
-            self.waveform.show_wave()
+            self.waveform.show_recording()
             play_start_sound()
             self._recording_timeout = QTimer.singleShot(60000, self._force_stop_recording)
-    
+
     def _force_stop_recording(self):
         if self.is_recording:
             self.stop_recording()
-    
+
     def stop_recording(self):
         if self.is_recording:
             self.is_recording = False
@@ -541,67 +688,63 @@ class MainWindow(QMainWindow):
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             play_stop_sound()
+            self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
-    
+
     def transcribe_audio(self, audio):
         if self.transcriber and len(audio) > 0:
             text = self.transcriber.transcribe(audio)
+            self.signals.transcribing_finished.emit()
             if text:
                 self.signals.text_ready.emit(text)
-    
+        else:
+            self.signals.transcribing_finished.emit()
+
     def on_text_ready(self, text):
-        import pyperclip
         self._suppress_hotkey = True
-        pyperclip.copy(text)
-        time.sleep(0.15)
-
         try:
-            import ctypes
-            user32 = ctypes.windll.user32
-            KEYEVENTF_KEYUP = 0x0002
-            VK_CONTROL = 0x11
-            VK_V = 0x56
-            VK_RETURN = 0x0D
+            import pyperclip
+            pyperclip.copy(text)
+            time.sleep(0.1)
 
-            user32.keybd_event(VK_CONTROL, 0, 0, 0)
-            time.sleep(0.02)
-            user32.keybd_event(VK_V, 0, 0, 0)
-            time.sleep(0.02)
-            user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
-            time.sleep(0.02)
-            user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-
-            if self.settings.get("auto_send"):
-                time.sleep(0.2)
-                user32.keybd_event(VK_RETURN, 0, 0, 0)
-                time.sleep(0.02)
-                user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+            is_terminal = _is_terminal()
+            _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
         except Exception as e:
-            print(f"Send error: {e}")
+            print(f"Paste error: {e}")
         finally:
             time.sleep(0.3)
             self._suppress_hotkey = False
-    
+
     def on_recording_started(self):
         self.mic_indicator.set_color("#00ff88")
         self.tray.setIcon(self.create_mic_icon("#00ff88"))
-    
+
     def on_recording_stopped(self):
+        self.mic_indicator.set_color("#f7ff00")
+        self.tray.setIcon(self.create_mic_icon("#f7ff00"))
+
+    def on_transcribing_started(self):
+        self.is_transcribing = True
         self.mic_indicator.set_color("#00f7ff")
+        self.waveform.show_transcribing()
+
+    def on_transcribing_finished(self):
+        self.is_transcribing = False
+        self.mic_indicator.set_color("#333")
+        self.waveform.hide_wave()
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
             self.tray.setIcon(self.create_mic_icon("#00f7ff"))
-        QTimer.singleShot(1000, lambda: self.mic_indicator.set_color("#333"))
-    
+
     def on_mode_changed(self, index):
         mode = "hold" if index == 0 else "toggle"
         self.settings.set("mode", mode)
-    
+
     def on_auto_send_changed(self, state):
         self.settings.set("auto_send", state == Qt.CheckState.Checked.value)
-    
+
     def start_hotkey_capture(self):
         self._capturing_hotkey = True
         self._captured_keys = set()
@@ -625,8 +768,6 @@ class MainWindow(QMainWindow):
     def keyPressEvent(self, event):
         if not self._capturing_hotkey:
             return super().keyPressEvent(event)
-
-        key = event.key()
         vk = event.nativeVirtualKey()
         self._captured_keys.add(vk)
         self._hotkey_timer.start()
@@ -659,11 +800,8 @@ class MainWindow(QMainWindow):
         self.settings.set("hotkey", combo)
         self.hotkey_btn.setText(combo.upper())
         self.hotkey_btn.setStyleSheet("")
-        self.init_hotkey()
-    
-    def on_waveform_changed(self, state):
-        pass
-    
+        self._start_listener(combo)
+
     def update_model_list(self):
         self.model_list.clear()
         for model in self.settings.get("models", []):
@@ -671,12 +809,12 @@ class MainWindow(QMainWindow):
             active = "● " if name == self.settings.get("active_model") else "○ "
             size = f" ({model['size']})" if model.get("size") else ""
             self.model_list.addItem(f"{active}{name}{size}")
-        
+
         count = self.model_list.count()
         row_h = self.model_list.sizeHintForRow(0)
         if row_h > 0:
             self.model_list.setFixedHeight(min(count, 5) * row_h + 4)
-    
+
     def add_model(self):
         path = QFileDialog.getExistingDirectory(self, "Выберите папку с моделью")
         if path:
@@ -686,7 +824,7 @@ class MainWindow(QMainWindow):
                 model_type = "whisper"
             elif "vosk" in name.lower():
                 model_type = "vosk"
-            
+
             model = {
                 "name": name,
                 "path": path,
@@ -696,7 +834,7 @@ class MainWindow(QMainWindow):
             }
             self.settings.add_model(model)
             self.update_model_list()
-    
+
     def remove_model(self):
         row = self.model_list.currentRow()
         if row >= 0:
@@ -707,7 +845,7 @@ class MainWindow(QMainWindow):
                 if reply == QMessageBox.StandardButton.Yes:
                     self.settings.remove_model(name)
                     self.update_model_list()
-    
+
     def set_active_model(self):
         row = self.model_list.currentRow()
         if row >= 0:
@@ -717,7 +855,7 @@ class MainWindow(QMainWindow):
                 self.settings.set("active_model", name)
                 self.update_model_list()
                 self.load_active_model()
-    
+
     def load_active_model(self):
         active_name = self.settings.get("active_model")
         models = self.settings.get("models", [])
@@ -725,36 +863,37 @@ class MainWindow(QMainWindow):
             if model["name"] == active_name:
                 self.transcriber = Transcriber(model)
                 break
-    
+
     def show_settings(self):
         self.show()
         self.activateWindow()
-    
+
     def show_models(self):
         self.show()
         self.activateWindow()
-    
+
     def tray_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.show_settings()
-    
+
     def toggle_recording(self):
         if self.is_recording:
             self.stop_recording()
         else:
             self.start_recording()
-    
+
     def hide_to_tray(self):
         self.hide()
-    
+
     def closeEvent(self, event):
         event.ignore()
         self.hide_to_tray()
-    
+
     def quit_app(self):
+        self._stop_listener()
         self.tray.hide()
         QApplication.quit()
-    
+
     def update_ad_banner(self):
         if self.ad_manager.show_banner():
             config = self.ad_manager.get_banner_config()
@@ -767,13 +906,14 @@ class MainWindow(QMainWindow):
                 self.ad_banner.setStyleSheet("background-color: #16213e; border: 1px solid #00f7ff; border-radius: 5px; color: #00f7ff; font-size: 18px; font-weight: bold;")
         else:
             self.ad_banner.hide()
-    
+
     def on_ad_banner_click(self, event):
         config = self.ad_manager.get_banner_config()
         link = config.get("link", "")
         if link:
             import webbrowser
             webbrowser.open(link)
+
 
 def main():
     import traceback
@@ -791,6 +931,7 @@ def main():
     app.setFont(font)
     window = MainWindow()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
