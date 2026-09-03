@@ -2,14 +2,14 @@
   "hotkey": "shift",
   "mode": "hold",
   "auto_send": true,
-  "active_model": "GigaAM v3 e2e-rnnt",
+  "active_model": "GigaAM v3 e2e-ctc",
   "models": [
     {
-      "name": "GigaAM v3 e2e-rnnt",
-      "path": "D:\\OpenCode_Arhive\\Voice models\\gigaam-v3-e2e-rnnt",
+      "name": "GigaAM v3 e2e-ctc",
+      "path": "D:\\OpenCode_Arhive\\Voice models\\gigaam-v3-e2e-ctc",
       "type": "sherpa-onnx",
       "language": "ru",
-      "size": "261 MB"
+      "size": "260 MB"
     },
     {
       "name": "GigaAM v3",

@@ -71,14 +71,14 @@ class Transcriber:
                             break
                 if not os.path.exists(model_file):
                     model_file = os.path.join(model_path, "model.int8.onnx")
-                self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
                     encoder=model_file,
                     decoder=decoder_file,
                     joiner=joiner_file,
                     tokens=tokens_file,
                     num_threads=4,
                 )
-                self.is_offline = False
+                self.is_offline = True
                 print(f"Loaded Transducer model: {config['name']}")
             else:
                 model_file = os.path.join(model_path, "model.int8.onnx")
