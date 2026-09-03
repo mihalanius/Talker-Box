@@ -54,6 +54,12 @@ class MainWindow(QMainWindow):
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
+            QMessageBox {
+                background-color: #1a1a2e;
+            }
+            QMessageBox QLabel {
+                color: #00ff88;
+            }
             QPushButton {
                 background-color: #16213e;
                 color: #00f7ff;

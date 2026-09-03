@@ -1,8 +1,8 @@
 {
   "hotkey": "shift",
-  "mode": "hold",
+  "mode": "toggle",
   "auto_send": true,
-  "active_model": "GigaAM v3",
+  "active_model": "Vosk Small",
   "models": [
     {
       "name": "GigaAM v3",
