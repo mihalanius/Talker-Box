@@ -1,6 +1,6 @@
 {
   "hotkey": "shift",
-  "mode": "toggle",
+  "mode": "hold",
   "auto_send": true,
   "active_model": "GigaAM v3",
   "models": [

@@ -16,6 +16,36 @@ from ad_manager import AdManager
 from waveform import WaveformWindow
 from sounds import play_start_sound, play_stop_sound
 
+class NeonFrame(QFrame):
+    def __init__(self, parent=None, color="#00ff88", corner_size=12, thickness=2):
+        super().__init__(parent)
+        self._color = QColor(color)
+        self._corner_size = corner_size
+        self._thickness = thickness
+        self.setStyleSheet("background: transparent; border: none;")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(self._color, self._thickness)
+        painter.setPen(pen)
+
+        w = self.width()
+        h = self.height()
+        s = self._corner_size
+
+        painter.drawLine(0, s, 0, 0)
+        painter.drawLine(0, 0, s, 0)
+        painter.drawLine(w - s, 0, w, 0)
+        painter.drawLine(w, 0, w, s)
+        painter.drawLine(0, h - s, 0, h)
+        painter.drawLine(0, h, s, h)
+        painter.drawLine(w - s, h, w, h)
+        painter.drawLine(w, h - s, w, h)
+
+        painter.end()
+
+
 class NeonGroupBox(QWidget):
     def __init__(self, title="", parent=None, color="#00ff88", corner_size=12, thickness=2):
         super().__init__(parent)
@@ -208,28 +238,41 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(settings_group)
         
-        model_group = QGroupBox("Модели")
-        model_layout = QVBoxLayout()
+        model_group = NeonGroupBox("Модели")
+        model_layout = model_group.layout()
         
         self.model_list = QListWidget()
         self.update_model_list()
         model_layout.addWidget(self.model_list)
         
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(8)
+        
+        add_frame = NeonFrame(corner_size=6, thickness=2)
+        add_frame_layout = QVBoxLayout(add_frame)
+        add_frame_layout.setContentsMargins(4, 4, 4, 4)
         self.add_model_btn = QPushButton("+ Добавить")
         self.add_model_btn.clicked.connect(self.add_model)
-        btn_layout.addWidget(self.add_model_btn)
+        add_frame_layout.addWidget(self.add_model_btn)
+        btn_layout.addWidget(add_frame)
         
+        remove_frame = NeonFrame(corner_size=6, thickness=2)
+        remove_frame_layout = QVBoxLayout(remove_frame)
+        remove_frame_layout.setContentsMargins(4, 4, 4, 4)
         self.remove_model_btn = QPushButton("- Удалить")
         self.remove_model_btn.clicked.connect(self.remove_model)
-        btn_layout.addWidget(self.remove_model_btn)
+        remove_frame_layout.addWidget(self.remove_model_btn)
+        btn_layout.addWidget(remove_frame)
         
+        select_frame = NeonFrame(corner_size=6, thickness=2)
+        select_frame_layout = QVBoxLayout(select_frame)
+        select_frame_layout.setContentsMargins(4, 4, 4, 4)
         self.set_active_btn = QPushButton("Выбрать")
         self.set_active_btn.clicked.connect(self.set_active_model)
-        btn_layout.addWidget(self.set_active_btn)
+        select_frame_layout.addWidget(self.set_active_btn)
+        btn_layout.addWidget(select_frame)
         
         model_layout.addLayout(btn_layout)
-        model_group.setLayout(model_layout)
         layout.addWidget(model_group)
         
         self.mic_indicator = QLabel()
