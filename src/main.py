@@ -80,6 +80,15 @@ class NeonGroupBox(QWidget):
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
 
+        if self._title:
+            painter.setClipping(False)
+            font = QFont("Segoe UI", 10, QFont.Weight.Bold)
+            painter.setFont(font)
+            painter.setPen(QPen(self._color))
+            fm = painter.fontMetrics()
+            text_w = fm.horizontalAdvance(self._title)
+            painter.drawText(s + 4, -4, self._title)
+
         painter.end()
 
 class Signals(QObject):
