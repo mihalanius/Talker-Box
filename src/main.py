@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
         model_layout = model_group.layout()
         
         self.model_list = QListWidget()
-        self.model_list.setMaximumHeight(120)
+        self.model_list.setFixedHeight(28)
         self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
