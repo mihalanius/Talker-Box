@@ -552,7 +552,7 @@ class MainWindow(QMainWindow):
     def on_recording_stopped(self):
         self.mic_indicator.set_color("#00f7ff")
         self.tray.setIcon(self.create_mic_icon("#00f7ff"))
-            QTimer.singleShot(1000, lambda: self.mic_indicator.set_color("#333"))
+        QTimer.singleShot(1000, lambda: self.mic_indicator.set_color("#333"))
     
     def on_mode_changed(self, index):
         mode = "hold" if index == 0 else "toggle"
