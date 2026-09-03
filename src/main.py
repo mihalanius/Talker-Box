@@ -258,8 +258,7 @@ class MainWindow(QMainWindow):
         model_list_frame_layout.setContentsMargins(4, 4, 4, 4)
         
         self.model_list = QListWidget()
-        self.model_list.setFixedHeight(28)
-        self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
         model_list_frame_layout.addWidget(self.model_list)
@@ -590,6 +589,14 @@ class MainWindow(QMainWindow):
             active = "● " if name == self.settings.get("active_model") else "○ "
             size = f" ({model['size']})" if model.get("size") else ""
             self.model_list.addItem(f"{active}{name}{size}")
+        
+        count = self.model_list.count()
+        row_height = self.model_list.sizeHintForRow(0)
+        if row_height < 0:
+            row_height = 24
+        new_height = max(count, 1) * row_height + 4
+        self.model_list.setFixedHeight(new_height)
+        self.adjustSize()
     
     def add_model(self):
         path = QFileDialog.getExistingDirectory(self, "Выберите папку с моделью")
