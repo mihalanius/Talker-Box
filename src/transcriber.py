@@ -86,13 +86,17 @@ class Transcriber:
             print(f"Error loading vosk: {e}")
 
     def transcribe(self, audio_data, sample_rate=16000):
+        text = ""
         if self.model_type == "sherpa-onnx":
-            return self._transcribe_sherpa(audio_data, sample_rate)
+            text = self._transcribe_sherpa(audio_data, sample_rate)
         elif self.model_type == "whisper":
-            return self._transcribe_whisper(audio_data, sample_rate)
+            text = self._transcribe_whisper(audio_data, sample_rate)
         elif self.model_type == "vosk":
-            return self._transcribe_vosk(audio_data, sample_rate)
-        return ""
+            text = self._transcribe_vosk(audio_data, sample_rate)
+        
+        if text and not text.startswith("[") and text[-1] not in ".!?":
+            text += "."
+        return text
 
     def _transcribe_sherpa(self, audio_data, sample_rate):
         if not self.recognizer:
