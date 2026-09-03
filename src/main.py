@@ -186,7 +186,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.ad_banner)
         self.update_ad_banner()
         
-        version_label = QLabel("Версия 1.11")
+        version_label = QLabel("Версия 1.12")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 5px;")
         layout.addWidget(version_label)
