@@ -78,14 +78,13 @@ class MainWindow(QMainWindow):
             }
             QScrollBar:vertical {
                 background: #16213e;
-                width: 8px;
-                border: 1px solid #00ff88;
-                border-radius: 4px;
+                width: 10px;
+                border-radius: 5px;
             }
             QScrollBar::handle:vertical {
                 background: #00ff88;
                 min-height: 20px;
-                border-radius: 3px;
+                border-radius: 5px;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
