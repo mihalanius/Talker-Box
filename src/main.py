@@ -179,6 +179,11 @@ class MainWindow(QMainWindow):
         self.ad_banner.mousePressEvent = self.on_ad_banner_click
         layout.addWidget(self.ad_banner)
         self.update_ad_banner()
+        
+        version_label = QLabel("Версия 1.11")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 5px;")
+        layout.addWidget(version_label)
     
     def init_ad_timer(self):
         self.ad_timer = QTimer()
@@ -372,7 +377,11 @@ class MainWindow(QMainWindow):
     def start_hotkey_capture(self):
         self._capturing_hotkey = True
         self._captured_keys = set()
-        self.hotkey_btn.setText("Нажмите комбинацию...")
+        self._hotkey_timer = QTimer()
+        self._hotkey_timer.setSingleShot(True)
+        self._hotkey_timer.setInterval(500)
+        self._hotkey_timer.timeout.connect(self._finish_hotkey_capture)
+        self.hotkey_btn.setText("Нажмите клавишу (или комбинацию)...")
         self.hotkey_btn.setStyleSheet("background-color: #00ff88; color: #000; border: 1px solid #00ff88; border-radius: 5px; font-weight: bold;")
         self.hotkey_btn.installEventFilter(self)
 
@@ -381,10 +390,7 @@ class MainWindow(QMainWindow):
             if event.type() == event.Type.KeyPress:
                 vk = event.nativeVirtualKey()
                 self._captured_keys.add(vk)
-                if len(self._captured_keys) >= 2:
-                    self._finish_hotkey_capture()
-                else:
-                    self.hotkey_btn.setText("Добавьте ещё клавишу...")
+                self._hotkey_timer.start()
                 return True
         return super().eventFilter(obj, event)
 
@@ -395,11 +401,7 @@ class MainWindow(QMainWindow):
         key = event.key()
         vk = event.nativeVirtualKey()
         self._captured_keys.add(vk)
-
-        if len(self._captured_keys) >= 2:
-            self._finish_hotkey_capture()
-        else:
-            self.hotkey_btn.setText("Добавьте ещё клавишу...")
+        self._hotkey_timer.start()
 
     def keyReleaseEvent(self, event):
         if not self._capturing_hotkey:
