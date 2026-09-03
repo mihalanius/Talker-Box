@@ -32,33 +32,11 @@ class Transcriber:
 
             tokens_file = os.path.join(model_path, "tokens.txt")
             if not os.path.exists(tokens_file):
-                for f in os.listdir(model_path):
-                    if f.endswith("_tokens.txt"):
-                        tokens_file = os.path.join(model_path, f)
-                        break
-                else:
-                    print(f"tokens.txt not found in {model_path}")
-                    return
+                print(f"tokens.txt not found in {model_path}")
+                return
 
             decoder_file = os.path.join(model_path, "decoder.onnx")
             joiner_file = os.path.join(model_path, "joiner.onnx")
-            joint_file = os.path.join(model_path, "joint.onnx")
-
-            if not os.path.exists(decoder_file):
-                for f in os.listdir(model_path):
-                    if f.endswith("_decoder.onnx"):
-                        decoder_file = os.path.join(model_path, f)
-                        break
-
-            if os.path.exists(joiner_file):
-                pass
-            elif os.path.exists(joint_file):
-                joiner_file = joint_file
-            else:
-                for f in os.listdir(model_path):
-                    if f.endswith("_joint.onnx"):
-                        joiner_file = os.path.join(model_path, f)
-                        break
 
             if os.path.exists(decoder_file) and os.path.exists(joiner_file):
                 model_file = os.path.join(model_path, "encoder.int8.onnx")
@@ -68,11 +46,6 @@ class Transcriber:
                     model_file = os.path.join(model_path, "model.onnx")
                 if not os.path.exists(model_file):
                     model_file = os.path.join(model_path, "model.int8.onnx")
-                if not os.path.exists(model_file):
-                    for f in os.listdir(model_path):
-                        if f.endswith("_encoder.onnx"):
-                            model_file = os.path.join(model_path, f)
-                            break
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
                     encoder=model_file,
                     decoder=decoder_file,
@@ -88,11 +61,6 @@ class Transcriber:
                 model_file = os.path.join(model_path, "model.int8.onnx")
                 if not os.path.exists(model_file):
                     model_file = os.path.join(model_path, "model.onnx")
-                if not os.path.exists(model_file):
-                    for f in os.listdir(model_path):
-                        if f.endswith(".onnx") and "tokens" not in f:
-                            model_file = os.path.join(model_path, f)
-                            break
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
                     model=model_file,
                     tokens=tokens_file,
@@ -132,6 +100,8 @@ class Transcriber:
         elif self.model_type == "vosk":
             text = self._transcribe_vosk(audio_data, sample_rate)
         
+        if text and not text.startswith("[") and text[-1] not in ".!?":
+            text += "."
         return text
 
     def _transcribe_sherpa(self, audio_data, sample_rate):
