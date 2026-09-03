@@ -266,6 +266,10 @@ class MainWindow(QMainWindow):
                 font: 10px 'Segoe UI';
                 padding: 2px 8px;
             }
+            QPushButton:hover {
+                color: #000000;
+                background: #00ff88;
+            }
         """
         
         self.add_model_btn = QPushButton("+ Добавить")
