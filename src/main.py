@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.ico")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(400, 450)
@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
     
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.ico")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
