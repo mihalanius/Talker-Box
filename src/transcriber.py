@@ -73,9 +73,13 @@ class Transcriber:
                         if f.endswith("_encoder.onnx"):
                             model_file = os.path.join(model_path, f)
                             break
-                self.recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
-                    model=model_file,
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                    encoder=model_file,
+                    decoder=decoder_file,
+                    joiner=joiner_file,
                     tokens=tokens_file,
+                    model_type="nemo_transducer",
+                    feature_dim=64,
                     num_threads=4,
                 )
                 self.is_offline = True

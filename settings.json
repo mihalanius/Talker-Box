@@ -5,13 +5,6 @@
   "active_model": "GigaAM v3 trans-punct",
   "models": [
     {
-      "name": "GigaAM v3",
-      "path": "D:\\OpenCode_Arhive\\Voice models\\sherpa-onnx\\sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
-      "type": "sherpa-onnx",
-      "language": "ru",
-      "size": "215 MB"
-    },
-    {
       "name": "GigaAM v3 trans-punct",
       "path": "D:\\OpenCode_Arhive\\Voice models\\sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
       "type": "sherpa-onnx",
