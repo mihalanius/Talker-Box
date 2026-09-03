@@ -257,37 +257,34 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
         
-        btn_style = "color: #00ff88; background: transparent; border: none; font: 10px 'Segoe UI';"
+        btn_style = """
+            QPushButton {
+                color: #00ff88;
+                background: transparent;
+                border: 1px solid #00ff88;
+                border-radius: 2px;
+                font: 10px 'Segoe UI';
+                padding: 2px 8px;
+            }
+        """
         
-        add_frame = NeonFrame(corner_size=6, thickness=2)
-        add_frame_layout = QVBoxLayout(add_frame)
-        add_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.add_model_btn = QPushButton("+ Добавить")
         self.add_model_btn.setStyleSheet(btn_style)
-        self.add_model_btn.setFixedHeight(18)
+        self.add_model_btn.setFixedHeight(22)
         self.add_model_btn.clicked.connect(self.add_model)
-        add_frame_layout.addWidget(self.add_model_btn)
-        btn_layout.addWidget(add_frame)
+        btn_layout.addWidget(self.add_model_btn)
         
-        remove_frame = NeonFrame(corner_size=6, thickness=2)
-        remove_frame_layout = QVBoxLayout(remove_frame)
-        remove_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.remove_model_btn = QPushButton("- Удалить")
         self.remove_model_btn.setStyleSheet(btn_style)
-        self.remove_model_btn.setFixedHeight(18)
+        self.remove_model_btn.setFixedHeight(22)
         self.remove_model_btn.clicked.connect(self.remove_model)
-        remove_frame_layout.addWidget(self.remove_model_btn)
-        btn_layout.addWidget(remove_frame)
+        btn_layout.addWidget(self.remove_model_btn)
         
-        select_frame = NeonFrame(corner_size=6, thickness=2)
-        select_frame_layout = QVBoxLayout(select_frame)
-        select_frame_layout.setContentsMargins(8, 4, 8, 4)
         self.set_active_btn = QPushButton("Выбрать")
         self.set_active_btn.setStyleSheet(btn_style)
-        self.set_active_btn.setFixedHeight(18)
+        self.set_active_btn.setFixedHeight(22)
         self.set_active_btn.clicked.connect(self.set_active_model)
-        select_frame_layout.addWidget(self.set_active_btn)
-        btn_layout.addWidget(select_frame)
+        btn_layout.addWidget(self.set_active_btn)
         
         model_layout.addLayout(btn_layout)
         layout.addWidget(model_group)
