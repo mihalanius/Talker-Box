@@ -472,8 +472,22 @@ class MainWindow(QMainWindow):
                 for vk in self._hotkey_vks
             ) if self._hotkey_vks else False
 
+            raw_prev = self._key_states.get("hotkey_raw", False)
+            self._key_states["hotkey_raw"] = all_pressed
+
+            if all_pressed != raw_prev:
+                self._key_states["hotkey_count"] = 0
+            self._key_states["hotkey_count"] = self._key_states.get("hotkey_count", 0) + 1
+
+            stable_threshold = 3
+            if self._key_states.get("hotkey_count", 0) < stable_threshold:
+                return
+
             prev = self._key_states.get("hotkey", False)
+            if all_pressed == prev:
+                return
             self._key_states["hotkey"] = all_pressed
+
             now = time.time()
 
             if all_pressed and not prev:
