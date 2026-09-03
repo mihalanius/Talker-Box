@@ -135,6 +135,9 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         self.setWindowTitle("Talker Box")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(400, 450)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
