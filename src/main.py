@@ -94,6 +94,15 @@ class NeonGroupBox(QWidget):
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
 
+        if self._title:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
+            painter.setPen(dash_pen)
+            fm = painter.fontMetrics()
+            text_w = fm.horizontalAdvance(self._title) + 20
+            painter.drawLine(text_w, 8, w - s - 4, 8)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
         painter.end()
 
 class Signals(QObject):
