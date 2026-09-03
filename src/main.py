@@ -467,20 +467,36 @@ class MainWindow(QMainWindow):
 
     def _poll_hotkey(self):
         try:
-            all_pressed = all(
+            raw = all(
                 bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
                 for vk in self._hotkey_vks
             ) if self._hotkey_vks else False
 
-            prev = self._key_states.get("hotkey", False)
+            confirmed = self._key_states.get("hotkey", False)
+            raw_count = self._key_states.setdefault("_raw_count", 0)
+            required = 3
 
+            if raw == confirmed:
+                self._key_states["_raw_count"] = 0
+                return
+
+            if raw == self._key_states.get("_last_raw", raw):
+                self._key_states["_raw_count"] = raw_count + 1
+            else:
+                self._key_states["_raw_count"] = 1
+            self._key_states["_last_raw"] = raw
+
+            if self._key_states["_raw_count"] < required:
+                return
+
+            self._key_states["hotkey"] = raw
+            self._key_states["_raw_count"] = 0
             now = time.time()
 
-            if all_pressed and not prev:
-                self._key_states["_release_count"] = 0
+            if raw and not confirmed:
                 if now - self._last_toggle_time < 0.5:
+                    self._key_states["hotkey"] = False
                     return
-                self._key_states["hotkey"] = True
                 self._last_toggle_time = now
 
                 if self.settings.get("mode") == "toggle":
@@ -493,17 +509,10 @@ class MainWindow(QMainWindow):
                         self.start_recording()
                         self.hold_mode = True
 
-            elif not all_pressed and prev:
-                count = self._key_states.get("_release_count", 0) + 1
-                self._key_states["_release_count"] = count
-                if count >= 2:
-                    self._key_states["hotkey"] = False
-                    self._key_states["_release_count"] = 0
-                    if self.hold_mode and self.is_recording:
-                        self.hold_mode = False
-                        self.stop_recording()
-            elif not all_pressed and not prev:
-                self._key_states["_release_count"] = 0
+            elif not raw and confirmed:
+                if self.hold_mode and self.is_recording:
+                    self.hold_mode = False
+                    self.stop_recording()
         except:
             pass
     
