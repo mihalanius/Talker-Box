@@ -431,7 +431,6 @@ class MainWindow(QMainWindow):
             import ctypes
             self._user32 = ctypes.windll.user32
             self._key_states = {}
-            self._last_toggle_time = 0
             self._poll_timer = QTimer()
             self._poll_timer.timeout.connect(self._poll_hotkey)
             self._poll_timer.setInterval(50)
@@ -467,38 +466,15 @@ class MainWindow(QMainWindow):
 
     def _poll_hotkey(self):
         try:
-            raw = all(
+            all_pressed = all(
                 bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
                 for vk in self._hotkey_vks
             ) if self._hotkey_vks else False
 
-            confirmed = self._key_states.get("hotkey", False)
-            raw_count = self._key_states.setdefault("_raw_count", 0)
-            required = 3
+            prev = self._key_states.get("hotkey", False)
+            self._key_states["hotkey"] = all_pressed
 
-            if raw == confirmed:
-                self._key_states["_raw_count"] = 0
-                return
-
-            if raw == self._key_states.get("_last_raw", raw):
-                self._key_states["_raw_count"] = raw_count + 1
-            else:
-                self._key_states["_raw_count"] = 1
-            self._key_states["_last_raw"] = raw
-
-            if self._key_states["_raw_count"] < required:
-                return
-
-            self._key_states["hotkey"] = raw
-            self._key_states["_raw_count"] = 0
-            now = time.time()
-
-            if raw and not confirmed:
-                if now - self._last_toggle_time < 0.5:
-                    self._key_states["hotkey"] = False
-                    return
-                self._last_toggle_time = now
-
+            if all_pressed and not prev:
                 if self.settings.get("mode") == "toggle":
                     if self.is_recording:
                         self.stop_recording()
@@ -509,7 +485,7 @@ class MainWindow(QMainWindow):
                         self.start_recording()
                         self.hold_mode = True
 
-            elif not raw and confirmed:
+            if not all_pressed and prev:
                 if self.hold_mode and self.is_recording:
                     self.hold_mode = False
                     self.stop_recording()

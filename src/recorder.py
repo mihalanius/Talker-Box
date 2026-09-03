@@ -18,7 +18,15 @@ class Recorder:
         self.audio_queue.put(indata.copy())
 
     def start(self):
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except:
+                pass
+            self.stream = None
         self.frames = []
+        self.audio_queue = queue.Queue()
         self.is_recording = True
         self.stream = sd.InputStream(
             samplerate=self.sample_rate,
@@ -31,8 +39,11 @@ class Recorder:
     def stop(self):
         self.is_recording = False
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except:
+                pass
             self.stream = None
         return self.get_audio()
 
