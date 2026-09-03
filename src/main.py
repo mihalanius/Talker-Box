@@ -440,6 +440,11 @@ class MainWindow(QMainWindow):
             self.signals.recording_started.emit()
             self.waveform.show_wave()
             play_start_sound()
+            self._recording_timeout = QTimer.singleShot(60000, self._force_stop_recording)
+    
+    def _force_stop_recording(self):
+        if self.is_recording:
+            self.stop_recording()
     
     def stop_recording(self):
         if self.is_recording:
