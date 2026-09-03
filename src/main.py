@@ -47,7 +47,7 @@ class NeonFrame(QFrame):
 
 
 class NeonGroupBox(QWidget):
-    def __init__(self, title="", parent=None, color="#00ff88", corner_size=12, thickness=1):
+    def __init__(self, title="", parent=None, color="#00ff88", corner_size=12, thickness=2):
         super().__init__(parent)
         self._title = title
         self._color = QColor(color)
