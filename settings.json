@@ -2,7 +2,7 @@
   "hotkey": "shift",
   "mode": "toggle",
   "auto_send": true,
-  "active_model": "Vosk Small",
+  "active_model": "GigaAM v3",
   "models": [
     {
       "name": "GigaAM v3",
@@ -10,13 +10,6 @@
       "type": "sherpa-onnx",
       "language": "ru",
       "size": "215 MB"
-    },
-    {
-      "name": "Vosk Small",
-      "path": "D:\\OpenCode_Arhive\\Voice models\\Vosk",
-      "type": "vosk",
-      "language": "ru",
-      "size": "87 MB"
     }
   ],
   "auto_start": true,

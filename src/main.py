@@ -8,13 +8,62 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QFileDialog, QLineEdit, QListWidget, QListWidgetItem,
                               QGroupBox, QFrame)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen
 from recorder import Recorder
 from transcriber import Transcriber
 from settings_manager import SettingsManager
 from ad_manager import AdManager
 from waveform import WaveformWindow
 from sounds import play_start_sound, play_stop_sound
+
+class NeonGroupBox(QWidget):
+    def __init__(self, title="", parent=None, color="#00ff88", corner_size=12, thickness=2):
+        super().__init__(parent)
+        self._title = title
+        self._color = QColor(color)
+        self._corner_size = corner_size
+        self._thickness = thickness
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(15, 20, 10, 10)
+        self.setStyleSheet("background: transparent;")
+
+    def layout(self):
+        return self._layout
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+        s = self._corner_size
+        gap = 8
+
+        pen = QPen(self._color, self._thickness)
+        painter.setPen(pen)
+        painter.drawLine(0, s, 0, 0)
+        painter.drawLine(0, 0, s, 0)
+        painter.drawLine(w - s, 0, w, 0)
+        painter.drawLine(w, 0, w, s)
+        painter.drawLine(0, h - s, 0, h)
+        painter.drawLine(0, h, s, h)
+        painter.drawLine(w - s, h, w, h)
+        painter.drawLine(w, h - s, w, h)
+
+        dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
+        painter.setPen(dash_pen)
+        painter.drawLine(s + gap, 0, w - s - gap, 0)
+        painter.drawLine(s + gap, h, w - s - gap, h)
+        painter.drawLine(0, s + gap, 0, h - s - gap)
+        painter.drawLine(w, s + gap, w, h - s - gap)
+
+        if self._title:
+            font = QFont("Segoe UI", 10)
+            painter.setFont(font)
+            painter.setPen(QPen(self._color))
+            painter.drawText(s + gap, -4, self._title)
+
+        painter.end()
 
 class Signals(QObject):
     text_ready = pyqtSignal(str)
@@ -97,14 +146,6 @@ class MainWindow(QMainWindow):
                 height: 0px;
             }
             QCheckBox { color: #eee; }
-            QGroupBox {
-                color: #00f7ff;
-                border: 1px solid #00f7ff;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 15px;
-            }
-            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
             QListWidget {
                 background-color: #16213e;
                 color: #eee;
@@ -123,8 +164,8 @@ class MainWindow(QMainWindow):
         hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(hint_label)
         
-        settings_group = QGroupBox("Настройки")
-        settings_layout = QVBoxLayout()
+        settings_group = NeonGroupBox("Настройки")
+        settings_layout = settings_group.layout()
         
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(QLabel("Режим:"))
@@ -165,7 +206,6 @@ class MainWindow(QMainWindow):
         hotkey_layout.addWidget(self.hotkey_btn)
         settings_layout.addLayout(hotkey_layout)
         
-        settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
         
         model_group = QGroupBox("Модели")
