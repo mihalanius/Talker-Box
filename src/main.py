@@ -55,8 +55,22 @@ class NeonGroupBox(QWidget):
         self._thickness = thickness
         self.setStyleSheet("background: transparent;")
 
-        self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(15, 20, 10, 10)
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(0, 0, 0, 0)
+        self._outer.setSpacing(0)
+
+        if title:
+            self._title_label = QLabel(title)
+            self._title_label.setStyleSheet(f"color: {color}; background: transparent; font: bold 10px 'Segoe UI';")
+            self._title_label.setFixedHeight(14)
+            self._title_label.move(corner_size + 4, 0)
+            self._outer.addWidget(self._title_label, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self._inner = QWidget()
+        self._inner.setStyleSheet("background: transparent;")
+        self._layout = QVBoxLayout(self._inner)
+        self._layout.setContentsMargins(15, 2, 10, 10)
+        self._outer.addWidget(self._inner)
 
     def layout(self):
         return self._layout
@@ -79,15 +93,6 @@ class NeonGroupBox(QWidget):
         painter.drawLine(0, h, s, h)
         painter.drawLine(w - s, h, w, h)
         painter.drawLine(w, h - s, w, h)
-
-        if self._title:
-            painter.setClipping(False)
-            font = QFont("Segoe UI", 10, QFont.Weight.Bold)
-            painter.setFont(font)
-            painter.setPen(QPen(self._color))
-            fm = painter.fontMetrics()
-            text_w = fm.horizontalAdvance(self._title)
-            painter.drawText(s + 4, -4, self._title)
 
         painter.end()
 
