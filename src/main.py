@@ -82,7 +82,6 @@ class NeonGroupBox(QWidget):
 
         dash_pen = QPen(self._color, 1, Qt.PenStyle.DashLine)
         painter.setPen(dash_pen)
-        painter.drawLine(s + gap, 0, w - s - gap, 0)
         painter.drawLine(s + gap, h, w - s - gap, h)
         painter.drawLine(0, s + gap, 0, h - s - gap)
         painter.drawLine(w, s + gap, w, h - s - gap)
@@ -90,8 +89,19 @@ class NeonGroupBox(QWidget):
         if self._title:
             font = QFont("Segoe UI", 10)
             painter.setFont(font)
+            fm = painter.fontMetrics()
+            text_w = fm.horizontalAdvance(self._title)
+            text_h = fm.height()
+            text_x = s + gap + 4
+            text_y = text_h // 2
             painter.setPen(QPen(self._color))
-            painter.drawText(s + gap, -4, self._title)
+            painter.drawText(text_x, text_y, self._title)
+            dash_end_x = text_x + text_w + 6
+            painter.setPen(dash_pen)
+            painter.drawLine(dash_end_x, 0, w - s - gap, 0)
+            painter.drawLine(s + gap, 0, text_x - 4, 0)
+        else:
+            painter.drawLine(s + gap, 0, w - s - gap, 0)
 
         painter.end()
 
