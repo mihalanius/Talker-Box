@@ -110,29 +110,29 @@ class TaperedBar(QWidget):
         super().__init__(parent)
         self._color = QColor(color)
         self.setFixedHeight(height)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def set_color(self, color):
         self._color = QColor(color)
         self.update()
 
     def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w = self.width()
         h = self.height()
-        cy = h / 2
-        taper = min(h, 20)
+        cy = h / 2.0
+        taper = min(h * 2, 20)
 
-        gradient = QLinearGradient(0, 0, w, 0)
+        g = QLinearGradient(0, 0, w, 0)
         c = self._color
-        gradient.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 0))
-        gradient.setColorAt(0.15, QColor(c.red(), c.green(), c.blue(), 255))
-        gradient.setColorAt(0.85, QColor(c.red(), c.green(), c.blue(), 255))
-        gradient.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+        g.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 0))
+        g.setColorAt(0.15, QColor(c.red(), c.green(), c.blue(), 255))
+        g.setColorAt(0.85, QColor(c.red(), c.green(), c.blue(), 255))
+        g.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
 
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(gradient))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(g))
 
         path = QPainterPath()
         path.moveTo(taper, 0)
@@ -144,8 +144,8 @@ class TaperedBar(QWidget):
         path.quadTo(0, 0, taper, 0)
         path.closeSubpath()
 
-        painter.drawPath(path)
-        painter.end()
+        p.drawPath(path)
+        p.end()
 
 
 class Signals(QObject):
@@ -185,7 +185,7 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setMinimumSize(400, 350)
+        self.setFixedSize(400, 450)
         self.setStyleSheet("""
             QMainWindow { background-color: #1a1a2e; }
             QLabel { color: #eee; }
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
         model_list_frame_layout.setContentsMargins(4, 4, 4, 4)
         
         self.model_list = QListWidget()
-        self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.model_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.model_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.update_model_list()
         model_list_frame_layout.addWidget(self.model_list)
@@ -551,7 +551,11 @@ class MainWindow(QMainWindow):
     
     def on_recording_stopped(self):
         self.mic_indicator.set_color("#00f7ff")
-        self.tray.setIcon(self.create_mic_icon("#00f7ff"))
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
+        if os.path.exists(icon_path):
+            self.tray.setIcon(QIcon(icon_path))
+        else:
+            self.tray.setIcon(self.create_mic_icon("#00f7ff"))
         QTimer.singleShot(1000, lambda: self.mic_indicator.set_color("#333"))
     
     def on_mode_changed(self, index):
@@ -632,12 +636,9 @@ class MainWindow(QMainWindow):
             self.model_list.addItem(f"{active}{name}{size}")
         
         count = self.model_list.count()
-        row_height = self.model_list.sizeHintForRow(0)
-        if row_height < 0:
-            row_height = 24
-        new_height = max(count, 1) * row_height + 4
-        self.model_list.setFixedHeight(new_height)
-        self.adjustSize()
+        row_h = self.model_list.sizeHintForRow(0)
+        if row_h > 0:
+            self.model_list.setFixedHeight(min(count, 5) * row_h + 4)
     
     def add_model(self):
         path = QFileDialog.getExistingDirectory(self, "Выберите папку с моделью")

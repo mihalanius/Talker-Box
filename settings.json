@@ -2,21 +2,21 @@
   "hotkey": "shift",
   "mode": "hold",
   "auto_send": true,
-  "active_model": "GigaAM v3",
+  "active_model": "GigaAM v3 e2e-rnnt",
   "models": [
+    {
+      "name": "GigaAM v3 e2e-rnnt",
+      "path": "D:\\OpenCode_Arhive\\Voice models\\gigaam-v3-e2e-rnnt",
+      "type": "sherpa-onnx",
+      "language": "ru",
+      "size": "261 MB"
+    },
     {
       "name": "GigaAM v3",
       "path": "D:\\OpenCode_Arhive\\Voice models\\sherpa-onnx\\sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
       "type": "sherpa-onnx",
       "language": "ru",
       "size": "215 MB"
-    },
-    {
-      "name": "vosk-model-small-en-us-0.15",
-      "path": "D:/OpenCode_Arhive/Voice models/vosk-model-small-en-us-0.15",
-      "type": "vosk",
-      "language": "ru",
-      "size": ""
     }
   ],
   "auto_start": true,
