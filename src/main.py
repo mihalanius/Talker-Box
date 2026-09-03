@@ -250,7 +250,7 @@ class MainWindow(QMainWindow):
         
         add_frame = NeonFrame(corner_size=6, thickness=2)
         add_frame_layout = QVBoxLayout(add_frame)
-        add_frame_layout.setContentsMargins(4, 4, 4, 4)
+        add_frame_layout.setContentsMargins(8, 6, 8, 6)
         self.add_model_btn = QPushButton("+ Добавить")
         self.add_model_btn.setFixedHeight(25)
         self.add_model_btn.clicked.connect(self.add_model)
@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
         
         remove_frame = NeonFrame(corner_size=6, thickness=2)
         remove_frame_layout = QVBoxLayout(remove_frame)
-        remove_frame_layout.setContentsMargins(4, 4, 4, 4)
+        remove_frame_layout.setContentsMargins(8, 6, 8, 6)
         self.remove_model_btn = QPushButton("- Удалить")
         self.remove_model_btn.setFixedHeight(25)
         self.remove_model_btn.clicked.connect(self.remove_model)
@@ -268,7 +268,7 @@ class MainWindow(QMainWindow):
         
         select_frame = NeonFrame(corner_size=6, thickness=2)
         select_frame_layout = QVBoxLayout(select_frame)
-        select_frame_layout.setContentsMargins(4, 4, 4, 4)
+        select_frame_layout.setContentsMargins(8, 6, 8, 6)
         self.set_active_btn = QPushButton("Выбрать")
         self.set_active_btn.setFixedHeight(25)
         self.set_active_btn.clicked.connect(self.set_active_model)
