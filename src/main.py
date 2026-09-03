@@ -472,21 +472,13 @@ class MainWindow(QMainWindow):
                 for vk in self._hotkey_vks
             ) if self._hotkey_vks else False
 
-            state_history = self._key_states.setdefault("history", [])
-            state_history.append(all_pressed)
-            if len(state_history) > 4:
-                state_history.pop(0)
+            prev = self._key_states.get("hotkey", False)
 
-            if len(state_history) < 3:
-                return
-
-            confirmed = self._key_states.get("hotkey", False)
-
-            if not confirmed and all(state_history[-3:]):
-                self._key_states["hotkey"] = True
-                now = time.time()
+            now = time.time()
+            if all_pressed and not prev:
                 if now - self._last_toggle_time < 0.5:
                     return
+                self._key_states["hotkey"] = True
                 self._last_toggle_time = now
 
                 if self.settings.get("mode") == "toggle":
@@ -499,7 +491,7 @@ class MainWindow(QMainWindow):
                         self.start_recording()
                         self.hold_mode = True
 
-            elif confirmed and not all_pressed:
+            elif not all_pressed and prev:
                 self._key_states["hotkey"] = False
                 if self.hold_mode and self.is_recording:
                     self.hold_mode = False
