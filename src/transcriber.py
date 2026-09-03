@@ -61,20 +61,20 @@ class Transcriber:
                         break
 
             if os.path.exists(decoder_file) and os.path.exists(joiner_file):
-                model_file = os.path.join(model_path, "encoder.onnx")
+                model_file = os.path.join(model_path, "encoder.int8.onnx")
+                if not os.path.exists(model_file):
+                    model_file = os.path.join(model_path, "encoder.onnx")
                 if not os.path.exists(model_file):
                     model_file = os.path.join(model_path, "model.onnx")
+                if not os.path.exists(model_file):
+                    model_file = os.path.join(model_path, "model.int8.onnx")
                 if not os.path.exists(model_file):
                     for f in os.listdir(model_path):
                         if f.endswith("_encoder.onnx"):
                             model_file = os.path.join(model_path, f)
                             break
-                if not os.path.exists(model_file):
-                    model_file = os.path.join(model_path, "model.int8.onnx")
-                self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                    encoder=model_file,
-                    decoder=decoder_file,
-                    joiner=joiner_file,
+                self.recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
+                    model=model_file,
                     tokens=tokens_file,
                     num_threads=4,
                 )
