@@ -63,7 +63,7 @@ class NeonGroupBox(QWidget):
             self._title_label = QLabel(title)
             self._title_label.setStyleSheet(f"color: {color}; background: transparent; font: bold 12px 'Segoe UI';")
             self._title_label.setFixedHeight(16)
-            self._title_label.move(corner_size + 15, 0)
+            self._title_label.move(15, 0)
             self._outer.addWidget(self._title_label, 0, Qt.AlignmentFlag.AlignLeft)
 
         self._inner = QWidget()
