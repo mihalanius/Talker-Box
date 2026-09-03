@@ -1,6 +1,6 @@
 {
   "hotkey": "ctrl+win",
-  "mode": "hold",
+  "mode": "toggle",
   "auto_send": true,
   "active_model": "GigaAM v3 trans-punct",
   "models": [

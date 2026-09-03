@@ -141,6 +141,8 @@ class Signals(QObject):
     text_ready = pyqtSignal(str)
     recording_started = pyqtSignal()
     recording_stopped = pyqtSignal()
+    hotkey_pressed = pyqtSignal()
+    hotkey_released = pyqtSignal()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -428,16 +430,71 @@ class MainWindow(QMainWindow):
     
     def init_hotkey(self):
         try:
-            import ctypes
-            self._user32 = ctypes.windll.user32
-            self._key_states = {}
+            import keyboard
+            self._last_toggle_time = 0
+            self._hotkey_str = self.settings.get("hotkey", "f9")
+            self._hotkey_prev = False
+
+            self._register_keyboard_hook()
+
             self._poll_timer = QTimer()
             self._poll_timer.timeout.connect(self._poll_hotkey)
             self._poll_timer.setInterval(50)
             self._poll_timer.start()
-            self._hotkey_vks = self._parse_hotkey(self.settings.get("hotkey", "ctrl+win"))
+
+            self._reregister_timer = QTimer()
+            self._reregister_timer.timeout.connect(self._register_keyboard_hook)
+            self._reregister_timer.setInterval(30000)
+            self._reregister_timer.start()
+
+            print(f"Hotkey polling: {self._hotkey_str}")
         except Exception as e:
             print(f"Hotkey error: {e}")
+
+    def _register_keyboard_hook(self):
+        try:
+            import keyboard
+            keyboard.unhook_all()
+            keyboard.on_press_key(self._hotkey_str, lambda e: self._kb_press())
+            keyboard.on_release_key(self._hotkey_str, lambda e: self._kb_release())
+        except:
+            pass
+
+    def _kb_press(self):
+        self._hotkey_pressed_flag = True
+
+    def _kb_release(self):
+        self._hotkey_pressed_flag = False
+
+    def _poll_hotkey(self):
+        try:
+            pressed = getattr(self, '_hotkey_pressed_flag', False)
+
+            if pressed and not self._hotkey_prev:
+                self._hotkey_prev = True
+                now = time.time()
+                if now - self._last_toggle_time < 0.5:
+                    return
+                self._last_toggle_time = now
+
+                if self.settings.get("mode") == "toggle":
+                    if self.is_recording:
+                        self.stop_recording()
+                    else:
+                        self.start_recording()
+                else:
+                    if not self.is_recording:
+                        self.start_recording()
+                        self.hold_mode = True
+
+            elif not pressed and self._hotkey_prev:
+                self._hotkey_prev = False
+                if self.settings.get("mode") == "hold":
+                    if self.hold_mode and self.is_recording:
+                        self.hold_mode = False
+                        self.stop_recording()
+        except:
+            pass
 
     def _parse_hotkey(self, hotkey_str):
         VK_MAP = {
@@ -463,34 +520,6 @@ class MainWindow(QMainWindow):
             elif len(part) == 1:
                 vks.append(ord(part.upper()))
         return vks
-
-    def _poll_hotkey(self):
-        try:
-            all_pressed = all(
-                bool(self._user32.GetAsyncKeyState(vk) & 0x8000)
-                for vk in self._hotkey_vks
-            ) if self._hotkey_vks else False
-
-            prev = self._key_states.get("hotkey", False)
-            self._key_states["hotkey"] = all_pressed
-
-            if all_pressed and not prev:
-                if self.settings.get("mode") == "toggle":
-                    if self.is_recording:
-                        self.stop_recording()
-                    else:
-                        self.start_recording()
-                else:
-                    if not self.is_recording:
-                        self.start_recording()
-                        self.hold_mode = True
-
-            if not all_pressed and prev:
-                if self.hold_mode and self.is_recording:
-                    self.hold_mode = False
-                    self.stop_recording()
-        except:
-            pass
     
     def start_recording(self):
         if not self.is_recording:
@@ -523,16 +552,31 @@ class MainWindow(QMainWindow):
     def on_text_ready(self, text):
         import pyperclip
         pyperclip.copy(text)
-        
+        time.sleep(0.15)
+
         try:
-            import keyboard
-            keyboard.press_and_release('ctrl+v')
-            time.sleep(0.1)
-            
+            import ctypes
+            user32 = ctypes.windll.user32
+            KEYEVENTF_KEYUP = 0x0002
+            VK_CONTROL = 0x11
+            VK_V = 0x56
+            VK_RETURN = 0x0D
+
+            user32.keybd_event(VK_CONTROL, 0, 0, 0)
+            time.sleep(0.02)
+            user32.keybd_event(VK_V, 0, 0, 0)
+            time.sleep(0.02)
+            user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.02)
+            user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
             if self.settings.get("auto_send"):
-                keyboard.press_and_release('enter')
-        except:
-            pass
+                time.sleep(0.2)
+                user32.keybd_event(VK_RETURN, 0, 0, 0)
+                time.sleep(0.02)
+                user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+        except Exception as e:
+            print(f"Send error: {e}")
     
     def on_recording_started(self):
         self.mic_indicator.set_color("#00ff88")
