@@ -105,47 +105,34 @@ class NeonGroupBox(QWidget):
 
         painter.end()
 
-class TaperedBar(QWidget):
+class TaperedBar(QLabel):
     def __init__(self, parent=None, color="#333", height=5):
         super().__init__(parent)
-        self._color = QColor(color)
+        self._color = color
         self.setFixedHeight(height)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._update_style()
 
     def set_color(self, color):
-        self._color = QColor(color)
-        self.update()
+        self._color = color
+        self._update_style()
 
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w = self.width()
-        h = self.height()
-        cy = h / 2.0
-        taper = min(h * 2, 20)
-
-        g = QLinearGradient(0, 0, w, 0)
+    def _update_style(self):
         c = self._color
-        g.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 0))
-        g.setColorAt(0.15, QColor(c.red(), c.green(), c.blue(), 255))
-        g.setColorAt(0.85, QColor(c.red(), c.green(), c.blue(), 255))
-        g.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+        self.setStyleSheet(f"""
+            QLabel {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba({self._hex_to_rgb(c)}, 0),
+                    stop:0.15 rgba({self._hex_to_rgb(c)}, 255),
+                    stop:0.85 rgba({self._hex_to_rgb(c)}, 255),
+                    stop:1.0 rgba({self._hex_to_rgb(c)}, 0));
+                border-radius: 2px;
+            }}
+        """)
 
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(g))
-
-        path = QPainterPath()
-        path.moveTo(taper, 0)
-        path.lineTo(w - taper, 0)
-        path.quadTo(w, 0, w, cy)
-        path.quadTo(w, h, w - taper, h)
-        path.lineTo(taper, h)
-        path.quadTo(0, h, 0, cy)
-        path.quadTo(0, 0, taper, 0)
-        path.closeSubpath()
-
-        p.drawPath(path)
-        p.end()
+    def _hex_to_rgb(self, hex_color):
+        h = hex_color.lstrip('#')
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"{r},{g},{b}"
 
 
 class Signals(QObject):
