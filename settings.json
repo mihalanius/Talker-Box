@@ -1,5 +1,5 @@
 {
-  "hotkey": "ctrl+win",
+  "hotkey": "ctrl",
   "mode": "toggle",
   "auto_send": true,
   "active_model": "GigaAM v3 trans-punct",

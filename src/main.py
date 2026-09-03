@@ -145,8 +145,11 @@ class Signals(QObject):
     hotkey_released = pyqtSignal()
 
 class MainWindow(QMainWindow):
+    _hotkey_signal = pyqtSignal()
+
     def __init__(self):
         super().__init__()
+        self._hotkey_signal.connect(self._on_hotkey_toggle, Qt.ConnectionType.QueuedConnection)
         self.settings = SettingsManager()
         self.recorder = Recorder()
         self.transcriber = None
@@ -433,21 +436,16 @@ class MainWindow(QMainWindow):
             import keyboard
             self._last_toggle_time = 0
             self._hotkey_str = self.settings.get("hotkey", "f9")
-            self._hotkey_prev = False
+            self._hotkey_registered = False
 
             self._register_keyboard_hook()
-
-            self._poll_timer = QTimer()
-            self._poll_timer.timeout.connect(self._poll_hotkey)
-            self._poll_timer.setInterval(50)
-            self._poll_timer.start()
 
             self._reregister_timer = QTimer()
             self._reregister_timer.timeout.connect(self._register_keyboard_hook)
             self._reregister_timer.setInterval(30000)
             self._reregister_timer.start()
 
-            print(f"Hotkey polling: {self._hotkey_str}")
+            print(f"Hotkey: {self._hotkey_str}")
         except Exception as e:
             print(f"Hotkey error: {e}")
 
@@ -455,46 +453,45 @@ class MainWindow(QMainWindow):
         try:
             import keyboard
             keyboard.unhook_all()
-            keyboard.on_press_key(self._hotkey_str, lambda e: self._kb_press())
-            keyboard.on_release_key(self._hotkey_str, lambda e: self._kb_release())
-        except:
-            pass
+            hotkey = self._hotkey_str
+            if "+" in hotkey or hotkey in ("ctrl", "alt", "shift", "win"):
+                keyboard.add_hotkey(hotkey, lambda: self._hotkey_signal.emit(), suppress=False, trigger_on_release=False)
+            else:
+                keyboard.on_press_key(hotkey, lambda e: self._hotkey_signal.emit())
+            self._hotkey_registered = True
+        except Exception as e:
+            print(f"Hook error: {e}")
 
-    def _kb_press(self):
-        self._hotkey_pressed_flag = True
+    def _on_hotkey_toggle(self):
+        now = time.time()
+        if now - self._last_toggle_time < 0.8:
+            return
+        self._last_toggle_time = now
 
-    def _kb_release(self):
-        self._hotkey_pressed_flag = False
+        mode = self.settings.get("mode")
+        if mode == "toggle":
+            if self.is_recording:
+                self.stop_recording()
+            else:
+                self.start_recording()
+        else:
+            if not self.is_recording:
+                self.start_recording()
+                self.hold_mode = True
 
-    def _poll_hotkey(self):
+    def init_hold_release(self):
+        if self.settings.get("mode") != "hold":
+            return
         try:
-            pressed = getattr(self, '_hotkey_pressed_flag', False)
-
-            if pressed and not self._hotkey_prev:
-                self._hotkey_prev = True
-                now = time.time()
-                if now - self._last_toggle_time < 0.5:
-                    return
-                self._last_toggle_time = now
-
-                if self.settings.get("mode") == "toggle":
-                    if self.is_recording:
-                        self.stop_recording()
-                    else:
-                        self.start_recording()
-                else:
-                    if not self.is_recording:
-                        self.start_recording()
-                        self.hold_mode = True
-
-            elif not pressed and self._hotkey_prev:
-                self._hotkey_prev = False
-                if self.settings.get("mode") == "hold":
-                    if self.hold_mode and self.is_recording:
-                        self.hold_mode = False
-                        self.stop_recording()
+            import keyboard
+            keyboard.on_release_key(self._hotkey_str, lambda e: self._on_hotkey_release())
         except:
             pass
+
+    def _on_hotkey_release(self):
+        if self.hold_mode and self.is_recording:
+            self.hold_mode = False
+            self.stop_recording()
 
     def _parse_hotkey(self, hotkey_str):
         VK_MAP = {
