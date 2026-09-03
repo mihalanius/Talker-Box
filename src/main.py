@@ -97,6 +97,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         
+        hint_label = QLabel("Сверните Talker Box в трей → Откройте программу, наведите курсор на поле ввода текста → Нажмите горячую клавишу и начните говорить.")
+        hint_label.setWordWrap(True)
+        hint_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 8px 12px; background-color: #1a1b26; border: 1px solid #00ff88; border-radius: 5px;")
+        hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(hint_label)
+        
         settings_group = QGroupBox("Настройки")
         settings_layout = QVBoxLayout()
         
