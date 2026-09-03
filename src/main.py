@@ -76,17 +76,18 @@ class MainWindow(QMainWindow):
                 selection-color: #ffffff;
                 border: 1px solid #00f7ff;
             }
-            QScrollBar:vertical {
+            QComboBox QAbstractItemView QScrollBar:vertical {
                 background: #16213e;
                 width: 10px;
                 border-radius: 5px;
             }
-            QScrollBar::handle:vertical {
+            QComboBox QAbstractItemView QScrollBar::handle:vertical {
                 background: #00ff88;
                 min-height: 20px;
                 border-radius: 5px;
             }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            QComboBox QAbstractItemView QScrollBar::add-line:vertical,
+            QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
                 height: 0px;
             }
             QCheckBox { color: #eee; }
