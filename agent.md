@@ -15,7 +15,7 @@
 | Файл | Назначение |
 |------|-----------|
 | `src/main.py` (~995 строк) | Главное окно, запись, распознавание, вставка текста, tray, watchdog |
-| `src/hotkey_listener.py` (123 строки) | Отдельный процесс — опрос `GetAsyncKeyState` каждые 10мс |
+| `src/hotkey_listener.py` (123 строки) | Отдельный процесс — опрос `GetAsyncKeyState` каждые 10мс (**ПРОБЛЕМА: не подавляет клавиши**) |
 | `src/recorder.py` (78 строк) | Запись аудио через sounddevice, очередь сэмплов |
 | `src/transcriber.py` (160 строк) | Загрузка моделей (sherpa-onnx/whisper/vosk), распознавание |
 | `src/logger.py` (18 строк) | Логирование в `talkerbox.log` + stdout |
@@ -108,10 +108,33 @@ main.py → subprocess.Popen("python hotkey_listener.py <hotkey>")
 ### 2. Win key в комбинациях открывает системное меню
 
 **Симптом:** При использовании `ctrl+win` — Win key иногда срабатывает как одиночное нажатие → открывает меню Пуск / выбор аудиоустройств.  
-**Причина:** `GetAsyncKeyState` только считывает состояние клавиши. Он НЕ подавляет системное поведение Win key. Windows видит Win нажатой и реагирует.  
-**Сравнение:** Программа "Type v2.0.0" использует `RegisterHotKey` через C++ — эта функция МОДИФИЦИРУЕТ поведение клавиши и подавляет системную обработку.
+**Причина:** `GetAsyncKeyState` только считывает состояние клавиши. Он НЕ подавляет системное поведение Win key. Windows видит Win нажатой и реагирует.
 
-**Решение:** Использовать `RegisterHotKey` (Win32 API) вместо `GetAsyncKeyState`. Или запретить Win key в комбинациях (только modifier-only).
+**Как решено в Type v2.0.0:**
+1. Type использует нативный C++ `windows-key-listener.exe` который ставит **`SetWindowsHookExA(WH_KEYBOARD_LL, ...)`**
+2. Хук **подавляет** клавиши — когда Ctrl+Win нажат, Win key перехватывается хуком и НЕ передаётся в Windows
+3. Ключевой момент: `CallNextHookEx` вызывается ТОЛЬКО для клавищ которые НЕ входят в нашу комбинацию
+4. Для modifier-only комбинаций (все клавиши — модификаторы) Type ОБЯЗАТЕЛЬНО использует нативный listener, а не Electron globalShortcut
+
+**Строка из windowsKeyManager.js (строка 83):**
+> "The native process suppresses the captured keystrokes so Win+letter shortcuts do not escape to the shell while the settings field is armed."
+
+**Рекомендация:** Переписать `hotkey_listener.py` на использование `SetWindowsHookExA(WH_KEYBOARD_LL)` с правильным `CallNextHookEx`:
+```python
+def hook_proc(nCode, wParam, lParam):
+    if nCode >= 0:
+        vk = lParam & 0xFF
+        if is_key_down(lParam):
+            pressed_keys.add(vk)
+            if combo_satisfied(pressed_keys):
+                suppress = True  # Наша комбинация — подавляем
+                return 1  # НЕ вызываем CallNextHookEx
+        else:
+            pressed_keys.discard(vk)
+    return user32.CallNextHookEx(hook_id, nCode, wParam, lParam)  # Пропускаем
+```
+
+**ВАЖНО:** Предыдущая попытка использовать SetWindowsHookExA **убила клавиатуру** потому что НЕ вызывался CallNextHookEx. Это прерывает цепочку хуков и блокирует ВСЕ нажатия.
 
 ### 3. Garbled text — модель выдаёт мусор после нескольких записей
 
@@ -156,7 +179,8 @@ main.py → subprocess.Popen("python hotkey_listener.py <hotkey>")
 
 | Подход | Результат |
 |--------|-----------|
-| `SetWindowsHookExA` (WH_KEYBOARD_LL) | **Убил клавиатуру** — Win hook блокировал все нажатия |
+| `SetWindowsHookExA` (WH_KEYBOARD_LL) без CallNextHookEx | **Убил клавиатуру** — не вызывали CallNextHookEx → прервали цепочку хуков |
+| `SetWindowsHookExA` (WH_KEYBOARD_LL) С CallNextHookEx | **НЕ ПРОБОВАЛИ** — это правильный подход как в Type |
 | `RegisterHotKey` в Python | Ненадёжно — не ловит UP events, не работает с some combos |
 | `GetAsyncKeyState` polling (текущее) | Работает, но Win key проблема + premature timeout |
 | `QTimer.singleShot(60000)` | Срабатывает рано (2-7с вместо 60с) |
@@ -171,17 +195,31 @@ main.py → subprocess.Popen("python hotkey_listener.py <hotkey>")
 ## Сравнение с "Type v2.0.0" (конкурент)
 
 **Type** — Electron приложение с нативным C++ hotkey exe.  
-**Ключевые отличия:**
+**Архитектура Type (извлечена из app.asar):**
+
+1. **Hotkey:** По умолчанию `Control+Super` (modifier-only)
+2. **Определение:** `isModifierOnlyHotkey()` проверяет что ВСЕ части — модификаторы
+3. **Для modifier-only:** Запускает нативный `windows-key-listener.exe` (НЕ Electron globalShortcut)
+4. **C++ бинарник:** Ставит `SetWindowsHookExA(WH_KEYBOARD_LL)` с **подавлением клавиш**
+5. **Подавление:** Win key перехватывается хуком → Windows НЕ видит → меню НЕ открывается
+6. **State machine:** `MIN_HOLD_DURATION_MS = 150ms` debounce
+7. **События:** `KEY_DOWN`/`KEY_UP` через stdout → `WindowsKeyManager` → callback
+
+**Ключевые файлы Type:**
+- `src/helpers/windowsKeyManager.js` — обёртка над `windows-key-listener.exe`
+- `src/helpers/hotkeyManager.js` — определение типа hotkey, routing на нативный/globalShortcut
+- `src/helpers/windowManager.js` — push-to-talk state machine
 
 | Aspect | Type | Talker Box |
 |--------|------|------------|
-| Hotkey | `RegisterHotKey` (C++) | `GetAsyncKeyState` (Python subprocess) |
+| Hotkey method | `SetWindowsHookExA(WH_KEYBOARD_LL)` (C++) — **подавляет** | `GetAsyncKeyState` poll (Python) — **не подавляет** |
+| Win key behavior | Перехватывается хуком, Windows НЕ видит | Windows видит → открывает меню |
+| State machine | 150ms debounce, push/tap modes | Нет debounce, toggle/hold |
+| Modifier-only | Обязательно через нативный listener | Через GetAsyncKeyState (проблема) |
 | Paste | `SendInput` (C++) | `pyperclip` + `SendInput` (Python ctypes) |
 | Model | GigaAM v3 E2E RNNT (851 МБ float32) | GigaAM v3 trans-punct (225 МБ int8) |
-| Hotkey reliability | **Отличная** — никогда не ломается | Периодические проблемы |
-| Win key combo | **Без проблем** — RegisterHotKey подавляет | Win key открывает меню |
 
-**Вывод:** `RegisterHotKey` — правильный подход. Он зарегистрирован на уровне системы и перехватывает клавиши ДО обработки Windows. `GetAsyncKeyState` — это poll, который не влияет на системное поведение.
+**Вывод:** Type правильный подход — `SetWindowsHookExA(WH_KEYBOARD_LL)` с `CallNextHookEx` для пропуска не-наших клавиш. Наша ошибка: предыдущая реализация НЕ вызывала `CallNextHookEx` → убивала клавиатуру.
 
 ---
 
@@ -198,10 +236,10 @@ main.py → subprocess.Popen("python hotkey_listener.py <hotkey>")
 
 ## Приоритеты для решения
 
-1. **Win key problem** → Перейти на `RegisterHotKey` (Win32 API) или запретить Win в combo
+1. **Win key problem** → Переписать `hotkey_listener.py` на `SetWindowsHookExA(WH_KEYBOARD_LL)` с правильным `CallNextHookEx` (подавление клавиш как в Type)
 2. **RECORD_TIMEOUT** → Заменить `QTimer.singleShot` на `threading.Timer` или ручной опрос
-3. **Garbled text** → Добавить threading.Lock к recognizer, пересоздавать recognizer периодически
-4. **Toggle reliability** → State machine с подтверждением переходов
+3. **Garbled text** → Добавить threading.Lock к recognizer, пересоздаватор recognizer периодически
+4. **Toggle reliability** → State machine с 150ms debounce (как в Type: `MIN_HOLD_DURATION_MS`)
 5. **Hold mode UP detection** → Два последовательных чтения для подтверждения отпускания
 
 ---
