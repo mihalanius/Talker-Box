@@ -3,9 +3,17 @@ import ctypes
 import ctypes.wintypes as wintypes
 import time
 import signal
-import datetime
 
 user32 = ctypes.windll.user32
+
+WH_KEYBOARD_LL = 13
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_SYSKEYDOWN = 0x0104
+WM_SYSKEYUP = 0x0105
+HC_ACTION = 0
+VK_LWIN = 0x5B
+VK_RWIN = 0x5C
 
 VK_MAP = {
     "ctrl": 0x11, "lctrl": 0x11, "rctrl": 0x11,
@@ -26,12 +34,32 @@ VK_MAP = {
     "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
 }
 
-MODIFIER_CHECK = {
-    0x11: [0x11, 0xA2, 0xA3],
-    0x10: [0x10, 0xA0, 0xA1],
-    0x12: [0x12, 0xA4, 0xA5],
-    0x5B: [0x5B, 0x5C],
+MODIFIER_ALIASES = {
+    0x11: {0x11, 0xA2, 0xA3},
+    0x10: {0x10, 0xA0, 0xA1},
+    0x12: {0x12, 0xA4, 0xA5},
+    0x5B: {0x5B, 0x5C},
 }
+
+
+class KBDLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("vkCode", wintypes.DWORD),
+        ("scanCode", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    ]
+
+
+HOOKPROC = ctypes.CFUNCTYPE(
+    ctypes.c_long,
+    ctypes.c_int,
+    wintypes.WPARAM,
+    ctypes.c_void_p,
+)
+
+KEEP_ALIVE = []
 
 
 def parse_hotkey(hotkey_str):
@@ -43,7 +71,7 @@ def parse_hotkey(hotkey_str):
         code = VK_MAP.get(p)
         if code is not None:
             all_keys.append(code)
-            if code in MODIFIER_CHECK:
+            if code in MODIFIER_ALIASES:
                 modifiers.add(code)
             else:
                 vk = code
@@ -57,9 +85,59 @@ def parse_hotkey(hotkey_str):
     return modifiers, vk
 
 
-def is_key_pressed(vk):
-    state = user32.GetAsyncKeyState(vk)
-    return (state & 0x8000) != 0
+def make_listener(modifiers, main_vk):
+    pressed = set()
+    was_combo = [False]
+    hook_id_val = [0]
+
+    def hook_proc(nCode, wParam, lParam):
+        if nCode == HC_ACTION:
+            kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+            vk = kb.vkCode
+            is_down = wParam in (WM_KEYDOWN, WM_SYSKEYDOWN)
+            is_up = wParam in (WM_KEYUP, WM_SYSKEYUP)
+
+            if is_down:
+                pressed.add(vk)
+            elif is_up:
+                pressed.discard(vk)
+
+            def matches_modifier(req_mod):
+                return any(v in pressed for v in MODIFIER_ALIASES.get(req_mod, {req_mod}))
+
+            combo_pressed = (
+                all(matches_modifier(m) for m in modifiers) if modifiers else True
+            ) and (main_vk in pressed)
+
+            if combo_pressed and not was_combo[0]:
+                was_combo[0] = True
+                sys.stdout.write("KEY_DOWN\n")
+                sys.stdout.flush()
+                sys.stderr.write(f"[LISTENER] KEY_DOWN vk={main_vk:#x}\n")
+                sys.stderr.flush()
+                if vk in (VK_LWIN, VK_RWIN):
+                    return 1
+                return user32.CallNextHookEx(hook_id_val[0], nCode, wParam, ctypes.c_void_p(lParam))
+
+            if not combo_pressed and was_combo[0]:
+                was_combo[0] = False
+                sys.stdout.write("KEY_UP\n")
+                sys.stdout.flush()
+                sys.stderr.write(f"[LISTENER] KEY_UP vk={main_vk:#x}\n")
+                sys.stderr.flush()
+                return user32.CallNextHookEx(hook_id_val[0], nCode, wParam, ctypes.c_void_p(lParam))
+
+            if combo_pressed and is_up and vk == main_vk:
+                if vk in (VK_LWIN, VK_RWIN):
+                    return 1
+                return user32.CallNextHookEx(hook_id_val[0], nCode, wParam, ctypes.c_void_p(lParam))
+
+            if is_down and vk in (VK_LWIN, VK_RWIN):
+                return 1
+
+        return user32.CallNextHookEx(hook_id_val[0], nCode, wParam, ctypes.c_void_p(lParam))
+
+    return hook_proc, pressed, lambda: was_combo[0], hook_id_val
 
 
 def main():
@@ -73,9 +151,20 @@ def main():
         print(f"ERROR: invalid hotkey '{hotkey_str}'", flush=True)
         return
 
+    hook_proc_fn, pressed, get_was_combo, hook_id_val = make_listener(modifiers, vk)
+    c_hook_proc = HOOKPROC(hook_proc_fn)
+    KEEP_ALIVE.append(hook_proc_fn)
+    KEEP_ALIVE.append(c_hook_proc)
+
+    hook_id = user32.SetWindowsHookExA(WH_KEYBOARD_LL, c_hook_proc, None, 0)
+    if not hook_id:
+        print("ERROR: SetWindowsHookExA failed", flush=True)
+        return
+
+    hook_id_val[0] = hook_id
+
     print(f"LISTENER_READY:{hotkey_str}", flush=True)
 
-    was_pressed = False
     running = True
 
     def shutdown(sig, frame):
@@ -87,35 +176,21 @@ def main():
 
     last_heartbeat = time.time()
 
+    msg = wintypes.MSG()
     while running:
-        try:
-            all_mod_pressed = all(is_key_pressed(m) for m in modifiers) if modifiers else True
-            main_pressed = is_key_pressed(vk)
-            combo_pressed = all_mod_pressed and main_pressed
+        ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+        if ret == 0 or ret == -1:
+            break
 
-            if combo_pressed and not was_pressed:
-                was_pressed = True
-                print("KEY_DOWN", flush=True)
-                sys.stderr.write(f"[LISTENER] KEY_DOWN vk={vk:#x} mods={modifiers}\n")
-                sys.stderr.flush()
-            elif not combo_pressed and was_pressed:
-                was_pressed = False
-                print("KEY_UP", flush=True)
-                sys.stderr.write(f"[LISTENER] KEY_UP vk={vk:#x} mods={modifiers}\n")
-                sys.stderr.flush()
+        now = time.time()
+        if now - last_heartbeat >= 0.5:
+            print("HEARTBEAT", flush=True)
+            last_heartbeat = now
 
-            now = time.time()
-            if now - last_heartbeat >= 0.5:
-                print("HEARTBEAT", flush=True)
-                last_heartbeat = now
-
-            time.sleep(0.01)
-        except Exception as e:
-            print(f"ERROR: {e}", flush=True)
-            time.sleep(0.1)
-
-    if was_pressed:
-        print("KEY_UP", flush=True)
+    if get_was_combo():
+        sys.stdout.write("KEY_UP\n")
+        sys.stdout.flush()
+    user32.UnhookWindowsHookEx(hook_id)
     print("LISTENER_STOPPED", flush=True)
 
 

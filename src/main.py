@@ -2,8 +2,6 @@ import sys
 import os
 import time
 import threading
-import subprocess
-import queue
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
@@ -16,6 +14,7 @@ from transcriber import Transcriber
 from settings_manager import SettingsManager
 from ad_manager import AdManager
 from waveform import WaveformWindow
+from hotkey_hook import HotkeyListener, start_capture
 from sounds import play_start_sound, play_stop_sound
 from logger import log
 
@@ -137,6 +136,7 @@ class Signals(QObject):
     recording_stopped = pyqtSignal()
     transcribing_started = pyqtSignal()
     transcribing_finished = pyqtSignal()
+    hotkey_captured = pyqtSignal(str)
 
 
 def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
@@ -293,16 +293,14 @@ class MainWindow(QMainWindow):
         self.is_transcribing = False
         self.hold_mode = False
         self._suppress_hotkey = False
-        self._listener_proc = None
-        self._listener_reader = None
-        self._listener_alive = False
-        self._last_heartbeat = 0
+        self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
         self.signals.recording_started.connect(self.on_recording_started)
         self.signals.recording_stopped.connect(self.on_recording_stopped)
         self.signals.transcribing_started.connect(self.on_transcribing_started)
         self.signals.transcribing_finished.connect(self.on_transcribing_finished)
+        self.signals.hotkey_captured.connect(self._on_hotkey_captured)
 
         self.init_ui()
         self.init_tray()
@@ -310,7 +308,6 @@ class MainWindow(QMainWindow):
         self.load_active_model()
         self.init_ad_timer()
         self.init_waveform()
-        self.init_watchdog()
         self.show()
 
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
@@ -507,12 +504,6 @@ class MainWindow(QMainWindow):
     def init_waveform(self):
         self.waveform = WaveformWindow()
 
-    def init_watchdog(self):
-        self._watchdog_timer = QTimer()
-        self._watchdog_timer.timeout.connect(self._check_listener_health)
-        self._watchdog_timer.setInterval(1000)
-        self._watchdog_timer.start()
-
     def check_ads(self):
         if self.ad_manager.should_show():
             self.show_tray_ad()
@@ -584,85 +575,24 @@ class MainWindow(QMainWindow):
     def _start_listener(self, hotkey):
         self._stop_listener()
         try:
-            listener_path = os.path.join(os.path.dirname(__file__), "hotkey_listener.py")
-            creation = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-            self._listener_proc = subprocess.Popen(
-                [sys.executable, listener_path, hotkey],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                bufsize=1,
-                creationflags=creation,
+            self._hotkey_listener = HotkeyListener(
+                hotkey,
+                on_down=lambda: self._hotkey_signal.emit("DOWN"),
+                on_up=lambda: self._hotkey_signal.emit("UP"),
             )
-
-            self._listener_queue = queue.Queue()
-            self._listener_thread = threading.Thread(
-                target=self._listener_read_loop, daemon=True
-            )
-            self._listener_thread.start()
-
-            self._listener_reader = QTimer()
-            self._listener_reader.timeout.connect(self._read_listener)
-            self._listener_reader.setInterval(30)
-            self._listener_reader.start()
-
+            self._hotkey_listener.start()
             print(f"Hotkey listener: {hotkey}")
         except Exception as e:
             print(f"Listener error: {e}")
 
-    def _listener_read_loop(self):
-        proc = self._listener_proc
-        if not proc or not proc.stdout:
-            return
-        try:
-            for line in iter(proc.stdout.readline, ''):
-                if line:
-                    self._listener_queue.put(line.strip())
-        except Exception:
-            pass
-
     def _stop_listener(self):
-        if self._listener_proc:
-            try:
-                self._listener_proc.terminate()
-                self._listener_proc.wait(timeout=1)
-            except Exception:
-                try:
-                    self._listener_proc.kill()
-                except Exception:
-                    pass
-            self._listener_proc = None
-
-    def _read_listener(self):
-        if not hasattr(self, '_listener_queue'):
-            return
-        try:
-            while True:
-                line = self._listener_queue.get_nowait()
-                if line.startswith("KEY_DOWN"):
-                    self._hotkey_signal.emit("DOWN")
-                elif line.startswith("KEY_UP"):
-                    self._hotkey_signal.emit("UP")
-                elif line.startswith("HEARTBEAT"):
-                    self._last_heartbeat = time.time()
-                    self._listener_alive = True
-        except queue.Empty:
-            pass
-
-    def _check_listener_health(self):
-        if self._listener_proc is None:
-            return
-        if self._listener_proc.poll() is not None:
-            print("Listener process died, restarting...", flush=True)
-            self._restart_listener()
-            return
-        if self._listener_alive and time.time() - self._last_heartbeat > 5:
-            print("Listener heartbeat timeout, restarting...", flush=True)
-            self._restart_listener()
+        if self._hotkey_listener:
+            self._hotkey_listener.stop()
+            self._hotkey_listener = None
 
     def _restart_listener(self):
         self._stop_listener()
-        hotkey = self.settings.get("hotkey", "f9")
+        hotkey = self.settings.get("hotkey", "ctrl+win")
         self._start_listener(hotkey)
 
     def _on_hotkey_event(self, event):
@@ -708,7 +638,13 @@ class MainWindow(QMainWindow):
             self.signals.recording_started.emit()
             self.waveform.show_recording()
             play_start_sound()
-            self._recording_timeout = QTimer.singleShot(60000, self._force_stop_recording)
+            self._recording_session = getattr(self, '_recording_session', 0) + 1
+            session = self._recording_session
+            self._recording_timeout = QTimer.singleShot(60000, lambda s=session: self._on_recording_timeout(s))
+
+    def _on_recording_timeout(self, session):
+        if session == getattr(self, '_recording_session', 0):
+            self._force_stop_recording()
 
     def _force_stop_recording(self):
         if self.is_recording:
@@ -752,21 +688,25 @@ class MainWindow(QMainWindow):
             self.signals.transcribing_finished.emit()
 
     def on_text_ready(self, text):
+        log("TEXT_READY", f"len={len(text)} text={repr(text[:60])}")
         self._suppress_hotkey = True
         try:
             import pyperclip
             pyperclip.copy(text)
+            log("CLIPBOARD_SET", "ok")
             QTimer.singleShot(100, lambda: self._do_paste(text))
         except Exception as e:
-            print(f"Paste error: {e}")
+            log("PASTE_ERROR", str(e))
             self._suppress_hotkey = False
 
     def _do_paste(self, text):
         try:
+            log("DO_PASTE", f"auto_send={self.settings.get('auto_send')}")
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
+            log("DO_PASTE_DONE", "ok")
         except Exception as e:
-            print(f"Paste error: {e}")
+            log("PASTE_ERROR", str(e))
         finally:
             QTimer.singleShot(300, self._release_hotkey_suppress)
 
@@ -804,61 +744,33 @@ class MainWindow(QMainWindow):
         self.settings.set("auto_send", state == Qt.CheckState.Checked.value)
 
     def start_hotkey_capture(self):
+        self._stop_listener()
         self._capturing_hotkey = True
-        self._captured_keys = set()
-        self._hotkey_timer = QTimer()
-        self._hotkey_timer.setSingleShot(True)
-        self._hotkey_timer.setInterval(500)
-        self._hotkey_timer.timeout.connect(self._finish_hotkey_capture)
         self.hotkey_btn.setText("Нажмите клавишу (или комбинацию)...")
         self.hotkey_btn.setStyleSheet("background-color: #00ff88; color: #000; border: 1px solid #00ff88; border-radius: 5px; font-weight: bold;")
-        self.hotkey_btn.installEventFilter(self)
+        start_capture(self._on_hotkey_captured)
+
+    def _on_hotkey_captured(self, combo):
+        self._capturing_hotkey = False
+        if combo:
+            self.settings.set("hotkey", combo)
+            self.hotkey_btn.setText(combo.upper())
+            self.hotkey_btn.setStyleSheet("")
+            QTimer.singleShot(100, lambda c=combo: self._start_listener(c))
+        else:
+            hotkey = self.settings.get("hotkey", "ctrl+win")
+            self.hotkey_btn.setText(hotkey.upper())
+            self.hotkey_btn.setStyleSheet("")
+            QTimer.singleShot(100, lambda h=hotkey: self._start_listener(h))
 
     def eventFilter(self, obj, event):
-        if obj == self.hotkey_btn and self._capturing_hotkey:
-            if event.type() == event.Type.KeyPress:
-                vk = event.nativeVirtualKey()
-                self._captured_keys.add(vk)
-                self._hotkey_timer.start()
-                return True
-        return super().eventFilter(obj, event)
+        return super().eventFilter(obj, event) if hasattr(super(), 'eventFilter') else False
 
     def keyPressEvent(self, event):
-        if not self._capturing_hotkey:
-            return super().keyPressEvent(event)
-        vk = event.nativeVirtualKey()
-        self._captured_keys.add(vk)
-        self._hotkey_timer.start()
+        return super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
-        if not self._capturing_hotkey:
-            return super().keyReleaseEvent(event)
-
-    def _finish_hotkey_capture(self):
-        self._capturing_hotkey = False
-        VK_NAMES = {
-            0x11: "ctrl", 0x10: "shift", 0x12: "alt",
-            0x5B: "win", 0x5C: "win",
-            0x41: "a", 0x42: "b", 0x43: "c", 0x44: "d", 0x45: "e",
-            0x46: "f", 0x47: "g", 0x48: "h", 0x49: "i", 0x4A: "j",
-            0x4B: "k", 0x4C: "l", 0x4D: "m", 0x4E: "n", 0x4F: "o",
-            0x50: "p", 0x51: "q", 0x52: "r", 0x53: "s", 0x54: "t",
-            0x55: "u", 0x56: "v", 0x57: "w", 0x58: "x", 0x59: "y", 0x5A: "z",
-            0x70: "f1", 0x71: "f2", 0x72: "f3", 0x73: "f4",
-            0x74: "f5", 0x75: "f6", 0x76: "f7", 0x77: "f8",
-            0x78: "f9", 0x79: "f10", 0x7A: "f11", 0x7B: "f12",
-            0x20: "space", 0x0D: "enter", 0x1B: "esc",
-            0x09: "tab", 0x14: "capslock",
-        }
-        parts = []
-        for vk in sorted(self._captured_keys):
-            name = VK_NAMES.get(vk, chr(vk) if 32 <= vk < 127 else f"vk{vk}")
-            parts.append(name)
-        combo = "+".join(parts)
-        self.settings.set("hotkey", combo)
-        self.hotkey_btn.setText(combo.upper())
-        self.hotkey_btn.setStyleSheet("")
-        self._start_listener(combo)
+        return super().keyReleaseEvent(event)
 
     def update_model_list(self):
         self.model_list.clear()
