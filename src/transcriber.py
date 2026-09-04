@@ -30,37 +30,87 @@ class Transcriber:
                 print(f"Model path not found: {model_path}")
                 return
 
-            tokens_file = os.path.join(model_path, "tokens.txt")
-            if not os.path.exists(tokens_file):
-                print(f"tokens.txt not found in {model_path}")
+            files = os.listdir(model_path)
+            files_lower = [f.lower() for f in files]
+
+            tokens_file = None
+            for f in files:
+                if f.lower() == "tokens.txt":
+                    tokens_file = os.path.join(model_path, f)
+                    break
+            if not tokens_file:
+                for f in files:
+                    if "tokens" in f.lower() and f.lower().endswith(".txt"):
+                        tokens_file = os.path.join(model_path, f)
+                        break
+
+            if not tokens_file:
+                for item in files:
+                    sub_path = os.path.join(model_path, item)
+                    if os.path.isdir(sub_path) and not item.startswith("."):
+                        sub_files = os.listdir(sub_path)
+                        for f in sub_files:
+                            if f.lower() == "tokens.txt" or ("tokens" in f.lower() and f.lower().endswith(".txt")):
+                                tokens_file = os.path.join(sub_path, f)
+                                model_path = sub_path
+                                files = sub_files
+                                break
+                        if tokens_file:
+                            break
+
+            if not tokens_file:
+                print(f"No tokens file found in {model_path}")
+                for f in files:
+                    print(f"  {f}")
                 return
 
-            decoder_file = os.path.join(model_path, "decoder.onnx")
-            joiner_file = os.path.join(model_path, "joiner.onnx")
+            encoder_file = None
+            decoder_file = None
+            joiner_file = None
+            for f in files:
+                fl = f.lower()
+                if "encoder" in fl and fl.endswith(".onnx"):
+                    encoder_file = os.path.join(model_path, f)
+                elif "decoder" in fl and fl.endswith(".onnx"):
+                    decoder_file = os.path.join(model_path, f)
+                elif ("joint" in fl or "joiner" in fl) and fl.endswith(".onnx"):
+                    joiner_file = os.path.join(model_path, f)
 
-            if os.path.exists(decoder_file) and os.path.exists(joiner_file):
-                model_file = os.path.join(model_path, "encoder.int8.onnx")
-                if not os.path.exists(model_file):
-                    model_file = os.path.join(model_path, "encoder.onnx")
-                if not os.path.exists(model_file):
-                    model_file = os.path.join(model_path, "model.onnx")
-                if not os.path.exists(model_file):
-                    model_file = os.path.join(model_path, "model.int8.onnx")
+            if encoder_file and decoder_file and joiner_file:
+                try:
+                    self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                        encoder=encoder_file,
+                        decoder=decoder_file,
+                        joiner=joiner_file,
+                        tokens=tokens_file,
+                        model_type="nemo_transducer",
+                        feature_dim=64,
+                        num_threads=4,
+                    )
+                    self.is_offline = True
+                    print(f"Loaded Transducer (NeMo) model: {config['name']}")
+                    return
+                except Exception:
+                    pass
+
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                    encoder=model_file,
+                    encoder=encoder_file,
                     decoder=decoder_file,
                     joiner=joiner_file,
                     tokens=tokens_file,
-                    model_type="nemo_transducer",
-                    feature_dim=64,
                     num_threads=4,
                 )
                 self.is_offline = True
                 print(f"Loaded Transducer model: {config['name']}")
-            else:
-                model_file = os.path.join(model_path, "model.int8.onnx")
-                if not os.path.exists(model_file):
-                    model_file = os.path.join(model_path, "model.onnx")
+                return
+
+            model_file = None
+            for f in files:
+                fl = f.lower()
+                if fl.endswith(".onnx") and "encoder" not in fl and "decoder" not in fl and "joint" not in fl:
+                    model_file = os.path.join(model_path, f)
+                    break
+            if model_file:
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
                     model=model_file,
                     tokens=tokens_file,
@@ -68,13 +118,67 @@ class Transcriber:
                 )
                 self.is_offline = True
                 print(f"Loaded CTC model: {config['name']}")
+                return
+
+            print(f"No recognized model files found in {model_path}")
+            for f in files:
+                print(f"  {f}")
         except ImportError:
             print("sherpa-onnx not installed")
         except Exception as e:
             print(f"Error loading sherpa-onnx: {e}")
 
     def _load_whisper(self, config):
-        print(f"Whisper model loading not implemented yet: {config['name']}")
+        try:
+            import sherpa_onnx
+            model_path = config.get("path", "")
+            if not model_path or not os.path.exists(model_path):
+                print(f"Whisper model path not found: {model_path}")
+                return
+
+            files = os.listdir(model_path)
+
+            tokens_file = None
+            for f in files:
+                if f.lower().endswith("-tokens.txt") or f.lower() == "tokens.txt":
+                    tokens_file = os.path.join(model_path, f)
+                    break
+
+            encoder_file = None
+            decoder_file = None
+            for f in files:
+                fl = f.lower()
+                if fl.endswith("-encoder.onnx") or fl.endswith("-encoder.int8.onnx"):
+                    encoder_file = os.path.join(model_path, f)
+                elif fl.endswith("-decoder.onnx") or fl.endswith("-decoder.int8.onnx"):
+                    decoder_file = os.path.join(model_path, f)
+
+            if not encoder_file:
+                for f in files:
+                    fl = f.lower()
+                    if "encoder" in fl and fl.endswith(".onnx"):
+                        encoder_file = os.path.join(model_path, f)
+                    elif "decoder" in fl and fl.endswith(".onnx"):
+                        decoder_file = os.path.join(model_path, f)
+
+            if not all([encoder_file, decoder_file, tokens_file]):
+                print(f"Required files not found in {model_path}")
+                for f in files:
+                    print(f"  {f}")
+                return
+
+            self.recognizer = sherpa_onnx.OfflineRecognizer.from_whisper(
+                encoder=encoder_file,
+                decoder=decoder_file,
+                tokens=tokens_file,
+                num_threads=4,
+            )
+            self.is_offline = True
+            print(f"Loaded Whisper model: {config['name']}")
+        except ImportError:
+            print("sherpa-onnx not installed")
+        except Exception as e:
+            print(f"Error loading whisper: {e}")
 
     def _load_vosk(self, config):
         try:
@@ -138,7 +242,17 @@ class Transcriber:
             return f"[Error: {e}]"
 
     def _transcribe_whisper(self, audio_data, sample_rate):
-        return "[Whisper not implemented]"
+        if not self.recognizer:
+            return "[Model not loaded]"
+        try:
+            audio_float = audio_data.astype(np.float32).flatten() / 32768.0
+            stream = self.recognizer.create_stream()
+            stream.accept_waveform(sample_rate, audio_float)
+            self.recognizer.decode_stream(stream)
+            result = stream.result
+            return result.text.strip()
+        except Exception as e:
+            return f"[Error: {e}]"
 
     def _transcribe_vosk(self, audio_data, sample_rate):
         if not self.recognizer:

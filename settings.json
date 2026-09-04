@@ -1,15 +1,15 @@
 {
   "hotkey": "win+ctrl",
-  "mode": "toggle",
+  "mode": "hold",
   "auto_send": true,
-  "active_model": "GigaAM v3 trans-punct",
+  "active_model": "GigaAM v3 trans-punct (220 Mb)",
   "models": [
     {
-      "name": "GigaAM v3 trans-punct",
-      "path": "D:\\OpenCode_Arhive\\Voice models\\sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+      "name": "GigaAM v3 trans-punct (220 Mb)",
+      "path": "D:/OpenCode_Arhive/Voice models/GigaAM v3 trans-punct (220 Mb)",
       "type": "sherpa-onnx",
       "language": "ru",
-      "size": "225 MB"
+      "size": ""
     }
   ],
   "auto_start": true,

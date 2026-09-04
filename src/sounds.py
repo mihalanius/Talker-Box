@@ -18,3 +18,11 @@ def play_stop_sound():
             winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
     except:
         pass
+
+def play_hover_sound():
+    try:
+        wav = os.path.join(SOUNDS_DIR, "transition_up.wav")
+        if os.path.exists(wav):
+            winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+    except:
+        pass

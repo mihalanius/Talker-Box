@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Talker Box — Руководство</title>
+    <style>
+        body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', sans-serif; padding: 40px; max-width: 700px; margin: auto; }
+        h1 { color: #00ff88; }
+        h2 { color: #00f7ff; margin-top: 30px; }
+        code { background: #16213e; padding: 2px 6px; border-radius: 3px; color: #00ff88; }
+        .key { background: #16213e; border: 1px solid #00f7ff; border-radius: 3px; padding: 2px 8px; color: #00ff88; font-weight: bold; }
+        ul { line-height: 1.8; }
+    </style>
+</head>
+<body>
+    <h1>Talker Box — Руководство пользователя</h1>
+
+    <h2>Быстрый старт</h2>
+    <ol>
+        <li>Запустите программу</li>
+        <li>Откройте любое текстовое поле (блокнот, браузер, мессенджер)</li>
+        <li>Активируйте поле ввода нажатием <span class="key">ЛКМ</span></li>
+        <li>Нажмите и удерживайте горячую клавишу (<span class="key">Ctrl+Win</span> по умолчанию)</li>
+        <li>Говорите</li>
+        <li>Отпустите клавишу — текст вставится автоматически</li>
+    </ol>
+
+    <h2>Режимы работы</h2>
+    <ul>
+        <li><strong>Hold (удерживай)</strong> — запись идёт пока зажата клавиша. Отпустил — распознало и вставило</li>
+        <li><strong>Toggle (нажал-нажал)</strong> — первое нажатие начинает запись, второе останавливает</li>
+    </ul>
+
+    <h2>Настройки</h2>
+    <ul>
+        <li><strong>Режим</strong> — выбор между Hold и Toggle</li>
+        <li><strong>Авто-отправка</strong> — если включено, текст вставляется и отправляется нажатием Enter</li>
+        <li><strong>Горячая клавиша</strong> — нажмите кнопку и затем нажмите нужную комбинацию клавиш</li>
+        <li><strong>Сменить Модель</strong> — загрузка другой языковой модели из папки</li>
+    </ul>
+
+    <h2>Горячие клавиши</h2>
+    <ul>
+        <li>Можно задать любую комбинацию: <span class="key">Ctrl+Win</span>, <span class="key">Ctrl+Shift</span>, <span class="key">F9</span> и т.д.</li>
+        <li>Для смены — нажмите кнопку с текущей комбинацией, затем нажмите новую</li>
+    </ul>
+
+    <h2>Модели</h2>
+    <ul>
+        <li>Программа поддерживает модели <code>sherpa-onnx</code>, <code>vosk</code>, <code>whisper</code></li>
+        <li>Чтобы загрузить модель — нажмите «Сменить Модель» и выберите папку с моделью</li>
+        <li>Программа автоматически определит тип модели</li>
+    </ul>
+
+    <h2>Система</h2>
+    <ul>
+        <li>Программа сворачивается в трей при закрытии окна</li>
+        <li>Для полного выхода — ПКМ по иконке в трее → Выход</li>
+    </ul>
+
+    <p style="color: #666; margin-top: 40px;">Talker Box v.1.16 © Glab 2026</p>
+</body>
+</html>
