@@ -698,8 +698,12 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         if not self.is_recording:
+            if hasattr(self, '_recording_timeout') and self._recording_timeout:
+                self._recording_timeout.stop()
+                self._recording_timeout = None
             log("RECORD_START", f"mode={self.settings.get('mode')}")
             self.is_recording = True
+            self._recording_start_time = time.monotonic()
             self.recorder.start()
             self.signals.recording_started.emit()
             self.waveform.show_recording()
@@ -708,11 +712,16 @@ class MainWindow(QMainWindow):
 
     def _force_stop_recording(self):
         if self.is_recording:
-            log("RECORD_TIMEOUT", "60s limit reached")
+            elapsed = time.monotonic() - getattr(self, '_recording_start_time', 0)
+            log("RECORD_TIMEOUT", f"60s limit reached (elapsed={elapsed:.1f}s)")
+            self._recording_timeout = None
             self.stop_recording()
 
     def stop_recording(self):
         if self.is_recording:
+            if hasattr(self, '_recording_timeout') and self._recording_timeout:
+                self._recording_timeout.stop()
+                self._recording_timeout = None
             audio = self.recorder.stop()
             frames = len(audio) if len(audio) > 0 else 0
             duration = frames / 16000 if frames > 0 else 0
@@ -725,8 +734,13 @@ class MainWindow(QMainWindow):
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
 
     def transcribe_audio(self, audio):
+        elapsed = time.monotonic() - getattr(self, '_recording_start_time', time.monotonic())
+        if elapsed > 65:
+            log("TRANSCRIBE_SKIP", f"stale audio from {elapsed:.1f}s ago")
+            self.signals.transcribing_finished.emit()
+            return
         if self.transcriber and len(audio) > 0:
-            log("TRANSCRIBE_START", f"frames={len(audio)}")
+            log("TRANSCRIBE_START", f"frames={len(audio)} elapsed={elapsed:.1f}s")
             text = self.transcriber.transcribe(audio)
             log("TRANSCRIBE_DONE", f"text={repr(text[:80]) if text else 'EMPTY'}")
             self.signals.transcribing_finished.emit()
