@@ -2,12 +2,10 @@ import sys
 import ctypes
 import ctypes.wintypes as wintypes
 import time
+import signal
+import datetime
 
-WH_KEYBOARD_LL = 13
-WM_KEYDOWN = 0x0100
-WM_KEYUP = 0x0101
-WM_SYSKEYDOWN = 0x0104
-WM_SYSKEYUP = 0x0105
+user32 = ctypes.windll.user32
 
 VK_MAP = {
     "ctrl": 0x11, "lctrl": 0x11, "rctrl": 0x11,
@@ -28,23 +26,40 @@ VK_MAP = {
     "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
 }
 
-MODIFIER_VKS = {0x11, 0x10, 0x12, 0x5B, 0x5C}
+MODIFIER_CHECK = {
+    0x11: [0x11, 0xA2, 0xA3],
+    0x10: [0x10, 0xA0, 0xA1],
+    0x12: [0x12, 0xA4, 0xA5],
+    0x5B: [0x5B, 0x5C],
+}
 
 
 def parse_hotkey(hotkey_str):
     parts = [p.strip().lower() for p in hotkey_str.split("+")]
-    target_vks = set()
+    vk = None
+    modifiers = set()
+    all_keys = []
     for p in parts:
-        vk = VK_MAP.get(p)
-        if vk:
-            target_vks.add(vk)
+        code = VK_MAP.get(p)
+        if code is not None:
+            all_keys.append(code)
+            if code in MODIFIER_CHECK:
+                modifiers.add(code)
+            else:
+                vk = code
         elif len(p) == 1:
-            target_vks.add(ord(p.upper()))
-    return target_vks
+            code = ord(p.upper())
+            all_keys.append(code)
+            vk = code
+    if vk is None and all_keys:
+        vk = all_keys[-1]
+        modifiers.discard(vk)
+    return modifiers, vk
 
 
-def is_modifier(vk):
-    return vk in MODIFIER_VKS
+def is_key_pressed(vk):
+    state = user32.GetAsyncKeyState(vk)
+    return (state & 0x8000) != 0
 
 
 def main():
@@ -53,76 +68,55 @@ def main():
         return
 
     hotkey_str = sys.argv[1]
-    target_vks = parse_hotkey(hotkey_str)
-    if not target_vks:
+    modifiers, vk = parse_hotkey(hotkey_str)
+    if vk is None:
         print(f"ERROR: invalid hotkey '{hotkey_str}'", flush=True)
-        return
-
-    pressed_vks = set()
-    hook_id = None
-    callback = None
-    user32 = ctypes.windll.user32
-
-    def process_event(vk, is_down):
-        if is_down:
-            pressed_vks.add(vk)
-        else:
-            pressed_vks.discard(vk)
-
-        target_pressed = target_vks.issubset(pressed_vks)
-        non_modifier_pressed = any(
-            v for v in pressed_vks if not is_modifier(v)
-        )
-
-        if target_pressed:
-            if target_vks == pressed_vks or (
-                not non_modifier_pressed and len(target_vks) == len([v for v in target_vks if is_modifier(v)])
-            ):
-                if is_down:
-                    print("KEY_DOWN", flush=True)
-                else:
-                    print("KEY_UP", flush=True)
-
-    @ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
-    def hook_proc(nCode, wParam, lParam):
-        if nCode >= 0:
-            kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-            vk = kb.vkCode
-            msg = wParam
-
-            if msg in (WM_KEYDOWN, WM_SYSKEYDOWN):
-                process_event(vk, True)
-            elif msg in (WM_KEYUP, WM_SYSKEYUP):
-                process_event(vk, False)
-
-        return user32.CallNextHookEx(hook_id, nCode, wParam, lParam)
-
-    class KBDLLHOOKSTRUCT(ctypes.Structure):
-        _fields_ = [
-            ("vkCode", wintypes.DWORD),
-            ("scanCode", wintypes.DWORD),
-            ("flags", wintypes.DWORD),
-            ("time", wintypes.DWORD),
-            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
-        ]
-
-    callback = hook_proc
-    hook_id = user32.SetWindowsHookExA(
-        WH_KEYBOARD_LL, callback, None, 0
-    )
-
-    if not hook_id:
-        print("ERROR: SetWindowsHookEx failed", flush=True)
         return
 
     print(f"LISTENER_READY:{hotkey_str}", flush=True)
 
-    msg = wintypes.MSG()
-    while user32.GetMessageA(ctypes.byref(msg), None, 0, 0) != 0:
-        user32.TranslateMessage(ctypes.byref(msg))
-        user32.DispatchMessageA(ctypes.byref(msg))
+    was_pressed = False
+    running = True
 
-    user32.UnhookWindowsHookEx(hook_id)
+    def shutdown(sig, frame):
+        nonlocal running
+        running = False
+
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+
+    last_heartbeat = time.time()
+
+    while running:
+        try:
+            all_mod_pressed = all(is_key_pressed(m) for m in modifiers) if modifiers else True
+            main_pressed = is_key_pressed(vk)
+            combo_pressed = all_mod_pressed and main_pressed
+
+            if combo_pressed and not was_pressed:
+                was_pressed = True
+                print("KEY_DOWN", flush=True)
+                sys.stderr.write(f"[LISTENER] KEY_DOWN vk={vk:#x} mods={modifiers}\n")
+                sys.stderr.flush()
+            elif not combo_pressed and was_pressed:
+                was_pressed = False
+                print("KEY_UP", flush=True)
+                sys.stderr.write(f"[LISTENER] KEY_UP vk={vk:#x} mods={modifiers}\n")
+                sys.stderr.flush()
+
+            now = time.time()
+            if now - last_heartbeat >= 0.5:
+                print("HEARTBEAT", flush=True)
+                last_heartbeat = now
+
+            time.sleep(0.01)
+        except Exception as e:
+            print(f"ERROR: {e}", flush=True)
+            time.sleep(0.1)
+
+    if was_pressed:
+        print("KEY_UP", flush=True)
+    print("LISTENER_STOPPED", flush=True)
 
 
 if __name__ == "__main__":

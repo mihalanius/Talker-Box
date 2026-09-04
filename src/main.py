@@ -17,6 +17,7 @@ from settings_manager import SettingsManager
 from ad_manager import AdManager
 from waveform import WaveformWindow
 from sounds import play_start_sound, play_stop_sound
+from logger import log
 
 
 class NeonFrame(QFrame):
@@ -246,17 +247,12 @@ TERMINAL_EXES = {
 
 def _is_terminal():
     import ctypes
+    import ctypes.wintypes
     user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
         return False
-
-    class INFO(ctypes.Structure):
-        _fields_ = [
-            ("cbSize", ctypes.wintypes.DWORD),
-            ("threadId", ctypes.wintypes.DWORD),
-            ("hwndOwner", ctypes.wintypes.HWND),
-        ]
 
     try:
         pid = ctypes.wintypes.DWORD()
@@ -277,7 +273,7 @@ def _is_terminal():
             exe = os.path.basename(exe_buf.value).lower()
             if exe in TERMINAL_EXES:
                 return True
-    except:
+    except Exception:
         pass
     return False
 
@@ -299,6 +295,8 @@ class MainWindow(QMainWindow):
         self._suppress_hotkey = False
         self._listener_proc = None
         self._listener_reader = None
+        self._listener_alive = False
+        self._last_heartbeat = 0
 
         self.signals.text_ready.connect(self.on_text_ready)
         self.signals.recording_started.connect(self.on_recording_started)
@@ -312,6 +310,7 @@ class MainWindow(QMainWindow):
         self.load_active_model()
         self.init_ad_timer()
         self.init_waveform()
+        self.init_watchdog()
         self.show()
 
         if self.settings.get("minimize_to_tray") and "--minimized" in sys.argv:
@@ -495,7 +494,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.ad_banner)
         self.update_ad_banner()
 
-        version_label = QLabel("Версия 1.13")
+        version_label = QLabel("Версия 1.14")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 5px;")
         layout.addWidget(version_label)
@@ -507,6 +506,12 @@ class MainWindow(QMainWindow):
 
     def init_waveform(self):
         self.waveform = WaveformWindow()
+
+    def init_watchdog(self):
+        self._watchdog_timer = QTimer()
+        self._watchdog_timer.timeout.connect(self._check_listener_health)
+        self._watchdog_timer.setInterval(1000)
+        self._watchdog_timer.start()
 
     def check_ads(self):
         if self.ad_manager.should_show():
@@ -613,7 +618,7 @@ class MainWindow(QMainWindow):
             for line in iter(proc.stdout.readline, ''):
                 if line:
                     self._listener_queue.put(line.strip())
-        except:
+        except Exception:
             pass
 
     def _stop_listener(self):
@@ -621,10 +626,10 @@ class MainWindow(QMainWindow):
             try:
                 self._listener_proc.terminate()
                 self._listener_proc.wait(timeout=1)
-            except:
+            except Exception:
                 try:
                     self._listener_proc.kill()
-                except:
+                except Exception:
                     pass
             self._listener_proc = None
 
@@ -638,18 +643,40 @@ class MainWindow(QMainWindow):
                     self._hotkey_signal.emit("DOWN")
                 elif line.startswith("KEY_UP"):
                     self._hotkey_signal.emit("UP")
+                elif line.startswith("HEARTBEAT"):
+                    self._last_heartbeat = time.time()
+                    self._listener_alive = True
         except queue.Empty:
             pass
 
+    def _check_listener_health(self):
+        if self._listener_proc is None:
+            return
+        if self._listener_proc.poll() is not None:
+            print("Listener process died, restarting...", flush=True)
+            self._restart_listener()
+            return
+        if self._listener_alive and time.time() - self._last_heartbeat > 5:
+            print("Listener heartbeat timeout, restarting...", flush=True)
+            self._restart_listener()
+
+    def _restart_listener(self):
+        self._stop_listener()
+        hotkey = self.settings.get("hotkey", "f9")
+        self._start_listener(hotkey)
+
     def _on_hotkey_event(self, event):
         if self._suppress_hotkey:
+            log("HOTKEY_SUPPRESSED", event)
             return
 
         if event == "DOWN":
             now = time.time()
             if now - self._last_toggle_time < 0.5:
+                log("HOTKEY_BLOCKED", f"debounce {now - self._last_toggle_time:.2f}s")
                 return
             self._last_toggle_time = now
+            log("HOTKEY_DOWN", f"mode={self.settings.get('mode')} recording={self.is_recording}")
 
             mode = self.settings.get("mode")
             if mode == "toggle":
@@ -663,6 +690,7 @@ class MainWindow(QMainWindow):
                     self.hold_mode = True
 
         elif event == "UP":
+            log("HOTKEY_UP", f"mode={self.settings.get('mode')} hold={self.hold_mode} recording={self.is_recording}")
             mode = self.settings.get("mode")
             if mode == "hold" and self.hold_mode and self.is_recording:
                 self.hold_mode = False
@@ -670,6 +698,7 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         if not self.is_recording:
+            log("RECORD_START", f"mode={self.settings.get('mode')}")
             self.is_recording = True
             self.recorder.start()
             self.signals.recording_started.emit()
@@ -679,12 +708,16 @@ class MainWindow(QMainWindow):
 
     def _force_stop_recording(self):
         if self.is_recording:
+            log("RECORD_TIMEOUT", "60s limit reached")
             self.stop_recording()
 
     def stop_recording(self):
         if self.is_recording:
-            self.is_recording = False
             audio = self.recorder.stop()
+            frames = len(audio) if len(audio) > 0 else 0
+            duration = frames / 16000 if frames > 0 else 0
+            log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
+            self.is_recording = False
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             play_stop_sound()
@@ -693,11 +726,15 @@ class MainWindow(QMainWindow):
 
     def transcribe_audio(self, audio):
         if self.transcriber and len(audio) > 0:
+            log("TRANSCRIBE_START", f"frames={len(audio)}")
             text = self.transcriber.transcribe(audio)
+            log("TRANSCRIBE_DONE", f"text={repr(text[:80]) if text else 'EMPTY'}")
             self.signals.transcribing_finished.emit()
             if text:
                 self.signals.text_ready.emit(text)
         else:
+            reason = "no transcriber" if not self.transcriber else "empty audio"
+            log("TRANSCRIBE_SKIP", reason)
             self.signals.transcribing_finished.emit()
 
     def on_text_ready(self, text):
@@ -705,15 +742,22 @@ class MainWindow(QMainWindow):
         try:
             import pyperclip
             pyperclip.copy(text)
-            time.sleep(0.1)
+            QTimer.singleShot(100, lambda: self._do_paste(text))
+        except Exception as e:
+            print(f"Paste error: {e}")
+            self._suppress_hotkey = False
 
+    def _do_paste(self, text):
+        try:
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
         except Exception as e:
             print(f"Paste error: {e}")
         finally:
-            time.sleep(0.3)
-            self._suppress_hotkey = False
+            QTimer.singleShot(300, self._release_hotkey_suppress)
+
+    def _release_hotkey_suppress(self):
+        self._suppress_hotkey = False
 
     def on_recording_started(self):
         self.mic_indicator.set_color("#00ff88")

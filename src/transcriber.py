@@ -100,6 +100,13 @@ class Transcriber:
         elif self.model_type == "vosk":
             text = self._transcribe_vosk(audio_data, sample_rate)
         
+        text = text.strip()
+        while text.startswith("{") or text.startswith("["):
+            text = text[1:]
+        while text.endswith("}") or text.endswith("]"):
+            text = text[:-1]
+        text = text.strip()
+
         if text and not text.startswith("[") and text[-1] not in ".!?":
             text += "."
         return text

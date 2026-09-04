@@ -1,7 +1,7 @@
 {
-  "hotkey": "shift",
-  "mode": "toggle",
-  "auto_send": true,
+  "hotkey": "f9",
+  "mode": "hold",
+  "auto_send": false,
   "active_model": "GigaAM v3 trans-punct",
   "models": [
     {
