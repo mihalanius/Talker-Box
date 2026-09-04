@@ -192,10 +192,11 @@ def hook_proc(nCode, wParam, lParam):
 
 ---
 
-## Сравнение с "Type v2.0.0" (конкурент)
+## Сравнение с конкурентами
 
-**Type** — Electron приложение с нативным C++ hotkey exe.  
-**Архитектура Type (извлечена из app.asar):**
+### Type v2.0.0
+
+**Type** — Electron приложение с нативным C++ hotkey exe.
 
 1. **Hotkey:** По умолчанию `Control+Super` (modifier-only)
 2. **Определение:** `isModifierOnlyHotkey()` проверяет что ВСЕ части — модификаторы
@@ -203,23 +204,31 @@ def hook_proc(nCode, wParam, lParam):
 4. **C++ бинарник:** Ставит `SetWindowsHookExA(WH_KEYBOARD_LL)` с **подавлением клавиш**
 5. **Подавление:** Win key перехватывается хуком → Windows НЕ видит → меню НЕ открывается
 6. **State machine:** `MIN_HOLD_DURATION_MS = 150ms` debounce
-7. **События:** `KEY_DOWN`/`KEY_UP` через stdout → `WindowsKeyManager` → callback
 
-**Ключевые файлы Type:**
-- `src/helpers/windowsKeyManager.js` — обёртка над `windows-key-listener.exe`
-- `src/helpers/hotkeyManager.js` — определение типа hotkey, routing на нативный/globalShortcut
-- `src/helpers/windowManager.js` — push-to-talk state machine
+### Vibe Typer
 
-| Aspect | Type | Talker Box |
-|--------|------|------------|
-| Hotkey method | `SetWindowsHookExA(WH_KEYBOARD_LL)` (C++) — **подавляет** | `GetAsyncKeyState` poll (Python) — **не подавляет** |
-| Win key behavior | Перехватывается хуком, Windows НЕ видит | Windows видит → открывает меню |
-| State machine | 150ms debounce, push/tap modes | Нет debounce, toggle/hold |
-| Modifier-only | Обязательно через нативный listener | Через GetAsyncKeyState (проблема) |
-| Paste | `SendInput` (C++) | `pyperclip` + `SendInput` (Python ctypes) |
-| Model | GigaAM v3 E2E RNNT (851 МБ float32) | GigaAM v3 trans-punct (225 МБ int8) |
+**Vibe Typer** — Electron приложение с нативным Node.js аддоном.
 
-**Вывод:** Type правильный подход — `SetWindowsHookExA(WH_KEYBOARD_LL)` с `CallNextHookEx` для пропуска не-наших клавиш. Наша ошибка: предыдущая реализация НЕ вызывала `CallNextHookEx` → убивала клавиатуру.
+1. **Hotkey:** По умолчанию `Ctrl+Space`
+2. **Для modifier-only:** Использует `uiohook-napi` (нативный адaddon для `libuiohook`)
+3. **`uiohook-napi`:** Ставит `SetWindowsHookExA(WH_KEYBOARD_LL)` через `libuiohook`
+4. **Подавление:** Аналогично Type — хук подавляет клавиши
+5. **Press-hold:** `registerPressHoldHotkey` + `setPressHoldCallbacks`
+6. **Отличие от Type:** НЕ отдельный процесс, а встроенный нативный аддон
+
+### Talker Box (мы)
+
+1. **Hotkey:** Опрос `GetAsyncKeyState` каждые 10мс в отдельном процессе
+2. **Без подавления:** Windows видит Win key → открывает меню
+3. **Без state machine:** Нет debounce, нет minimum hold duration
+
+| Aspect | Type | Vibe Typer | Talker Box |
+|--------|------|------------|------------|
+| Hotkey method | `SetWindowsHookExA` (C++ exe) | `SetWindowsHookExA` (uiohook-napi) | `GetAsyncKeyState` poll |
+| Win key suppression | Да | Да | Нет |
+| Architecture | Отдельный процесс | Встроенный нативный аддон | Отдельный процесс (poll) |
+| State machine | 150ms debounce | Press-hold callbacks | Нет |
+| Paste | SendInput (C++) | SendInput (koffi FFI) | pyperclip + SendInput |
 
 ---
 
@@ -236,9 +245,12 @@ def hook_proc(nCode, wParam, lParam):
 
 ## Приоритеты для решения
 
-1. **Win key problem** → Переписать `hotkey_listener.py` на `SetWindowsHookExA(WH_KEYBOARD_LL)` с правильным `CallNextHookEx` (подавление клавиш как в Type)
+1. **Win key problem** → Переписать `hotkey_listener.py` на низкоуровневый хук:
+   - **Вариант A (рекомендуемый):** Python `uiohook` библиотека (аналог `uiohook-napi` из Vibe Typer)
+   - **Вариант B:** `ctypes` + `SetWindowsHookExA(WH_KEYBOARD_LL)` с `CallNextHookEx`
+   - **Вариант C:** Нативный C++ exe (как в Type) —最可靠但需要 компиляцию
 2. **RECORD_TIMEOUT** → Заменить `QTimer.singleShot` на `threading.Timer` или ручной опрос
-3. **Garbled text** → Добавить threading.Lock к recognizer, пересоздаватор recognizer периодически
+3. **Garbled text** → Добавить threading.Lock к recognizer, пересоздаватator периодически
 4. **Toggle reliability** → State machine с 150ms debounce (как в Type: `MIN_HOLD_DURATION_MS`)
 5. **Hold mode UP detection** → Два последовательных чтения для подтверждения отпускания
 
