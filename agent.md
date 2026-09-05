@@ -1,14 +1,14 @@
 # Talker Box — Инструкция для агента
 
-> **✅ Версия v1.16 — стабильная рабочая версия.**  
-> Следующее изменение: v2.0.
+> **✅ Версия v2.0 — текущая версия.**  
+> GigaAM зашита как единственная модель, выбор моделей удалён.
 
 ## Обзор проекта
 
 **Talker Box** — десктопное приложение для голосового ввода текста (push-to-talk). 
   Пользователь зажимает горячую клавишу → говорит → отпускает → текст распознаётся и вставляется в активное окно через буфер обмена + SendInput.
 
-**Стек:** Python 3.13.15, PyQt6, sherpa-onnx (GigaAM v3 trans-punct, 225 МБ, int8), sounddevice, pyperclip  
+**Стек:** Python 3.13.15, PyQt6, sherpa-onnx (GigaAM v3 trans-punct, 220 МБ), sounddevice, pyperclip  
 **Платформа:** Windows 10/11  
 **Пользователь:** GOLDMAN, работает в cTrader, Node.js, C# WinForms  
 **GitHub:** https://github.com/mihalanius/Talker-Box.git
@@ -22,38 +22,47 @@
 | `src/main.py` | Главное окно, UI, запись, распознавание, вставка текста, tray |
 | `src/hotkey_hook.py` | In-process WH_KEYBOARD_LL хук — горячая клавиша, подавление клавиш |
 | `src/recorder.py` | Запись аудио через sounddevice |
-| `src/transcriber.py` | Универсальная загрузка моделей (sherpa-onnx/whisper/vosk), распознавание |
+| `src/transcriber.py` | Загрузка моделей sherpa-onnx, распознавание |
 | `src/logger.py` | Логирование в `talkerbox.log` + stdout |
-| `src/settings_manager.py` | Чтение/запись `settings.json` |
+| `src/settings_manager.py` | Чтение/запись `settings.json`, BUILTIN_MODEL |
 | `src/waveform.py` | Индикатор записи |
 | `src/sounds.py` | Звуки старта/остановки записи |
 | `src/ad_manager.py` | Рекламный баннер (отключён, высота 0) |
 | `help.html` | HTML-руководство пользователя |
-| `settings.json` | Конфигурация: hotkey, mode, model path |
-| `build.bat` | PyInstaller сборка |
+| `settings.json` | Конфигурация: hotkey, mode |
+| `build.bat` | PyInstaller сборка + копирование модели в dist |
 
 ---
 
-## Текущая конфигурация
+## Текущая конфигурация (v2.0)
 
 ```json
 {
-  "hotkey": "win+ctrl",
+  "hotkey": "ctrl+win",
   "mode": "hold",
   "auto_send": true,
-  "active_model": "GigaAM v3 trans-punct (220 Mb)",
-  "models": [{
-    "name": "GigaAM v3 trans-punct (220 Mb)",
-    "path": "D:/OpenCode_Arhive/Voice models/GigaAM v3 trans-punct (220 Mb)",
-    "type": "sherpa-onnx",
-    "language": "ru",
-    "size": ""
-  }]
+  "auto_start": true,
+  "minimize_to_tray": true
 }
 ```
 
-**Модель по умолчанию:** GigaAM v3 trans-punct  
+**Модель зашита в программу:** GigaAM v3 trans-punct  
+**Путь модели в dist:** `models/GigaAM/` (рядом с exe)  
+**Путь модели при dev:** `D:\OpenCode_Arhive\Voice models\GigaAM v3 trans-punct (220 Mb)`  
 **Файлы модели:** `encoder.int8.onnx`, `decoder.onnx`, `joiner.onnx`, `tokens.txt`
+
+---
+
+## Что изменилось в v2.0
+
+- Удалена поддержка Vosk и Whisper моделей
+- Удалён UI выбора моделей (кнопка "Сменить Модель", лейбл с названием)
+- GigaAM зашита как единственная модель через `BUILTIN_MODEL` в settings_manager.py
+- `load_active_model()` загружает только встроенную модель из `models/GigaAM/` рядом с exe
+- Удалены методы: `_load_new_model()`, `_detect_model_type()`, `_update_model_label()`, `show_models()`
+- Удалены: `_load_whisper()`, `_transcribe_whisper()`, `_load_vosk()`, `_transcribe_vosk()` из transcriber.py
+- `build.bat` копирует GigaAM модель в `dist/TalkerBox/models/GigaAM/`
+- Установщик включает модель (220 МБ)
 
 ---
 
@@ -90,26 +99,17 @@ main.py → hotkey_hook.py (HotkeyListener)
 
 ---
 
-## Универсальная загрузка моделей
+## Загрузка модели (v2.0)
 
-### Поддерживаемые типы
+### Встроенная модель
 
-| Тип | Определение | Пример |
-|-----|-------------|--------|
-| `sherpa-onnx` | encoder+decoder+joint или onnx+tokens | GigaAM, Zipformer |
-| `vosk` | final.mdl или am/conf/graph | vosk-model-small-en-us |
-| `whisper` | *-encoder.onnx + *-decoder.onnx + *-tokens.txt | sherpa-onnx-whisper-tiny |
-
-### Автоопределение типа (`_detect_model_type`)
-
-1. Сначала проверяет whisper (`*-encoder.onnx`, `*-decoder.onnx`)
-2. Затем sherpa-onnx (encoder/decoder/joint/onnx + tokens)
-3. Затем vosk (final.mdl или am/conf/graph)
-4. Если ничего не подошло → `unknown`
+- Определена в `settings_manager.py` как `BUILTIN_MODEL`
+- Путь: `models/GigaAM/` относительно exe (в dev — полный путь)
+- Тип: `sherpa-onnx` (NeMo transducer)
 
 ### Загрузка sherpa-onnx (`_load_sherpa_onnx`)
 
-1. Ищет tokens.txt (или *-tokens.txt) в корне и подпапках
+1. Ищет tokens.txt в корне и подпапках
 2. Ищет encoder/decoder/joint по шаблонам
 3. Пробует загрузить как NeMo transducer (с `model_type="nemo_transducer"`)
 4. Если ошибка — пробует стандартный transducer (для Zipformer)
@@ -118,12 +118,11 @@ main.py → hotkey_hook.py (HotkeyListener)
 ### Обработка ошибок
 
 - **При старте:** если модель не загрузилась → программа запускается без распознавания
-- **При загрузке:** показывает диалог ошибки с описанием
 - **При распознавании:** ловит исключения, пишет в лог
 
 ---
 
-## UI (v1.16)
+## UI (v2.0)
 
 ### Цветовая схема
 - Основной фон: градиент `#0a1628` (сверху) → `#1a1a2e` (снизу)
@@ -145,26 +144,33 @@ main.py → hotkey_hook.py (HotkeyListener)
 2. Подсказка (текст без рамки, прозрачный фон — звёзды видны)
 3. Неоновая линия
 4. Настройки (Режим, Авто-отправка, Горячая клавиша)
-5. Модели (название + кнопка "Сменить Модель")
-6. Неоновые линии + версия + справка
+5. Неоновые линии + версия + справка
 
 ---
 
-## Доступные модели
+## Доступные модели (зашиты в установщик)
 
 | Модель | Размер | Язык | Тип |
 |--------|--------|------|-----|
-| GigaAM v3 trans-punct | 220 MB | Русский | sherpa-onnx (NeMo) |
-| GigaAM v2 transducer | 230 MB | Русский | sherpa-onnx (NeMo) |
-| Zipformer Rus | 255 MB | Русский | sherpa-onnx (стандартный) |
-| vosk-model-small-en-us | 45 MB | Английский | vosk |
-| Vosk English mobile | 67 MB | Английский | vosk |
-| Vosk Ru | 87 MB | Русский | vosk |
+| GigaAM v3 trans-punct | 220 MB | Русский + транскрипция + пунктуация | sherpa-onnx (NeMo) |
 
 **Ссылки:**
 - GigaAM v3: https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16
 - Все модели sherpa-onnx: https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
+- Модели Vosk (устарели): https://alphacephei.com/vosk/models
 
+---
+
+## Среда
+
+- **OS:** Windows 10/11
+- **Python:** 3.13.15 (`C:\Program Files\Python313\`)
+- **pip пакеты:** PyQt6, sounddevice, numpy, pyperclip, sherpa-onnx>=1.13.0, pyWin32
+- **Git:** `https://github.com/mihalanius/Talker-Box.git`
+- **Рабочая папка:** `D:\OpenCode_Arhive\Talker Box\`
+- **Модели (dev):** `D:\OpenCode_Arhive\Voice models\`
+- **Inno Setup:** `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`
+- **Установщик:** `installer\Output\TalkerBoxSetup.exe`
 
 ---
 
@@ -172,19 +178,20 @@ main.py → hotkey_hook.py (HotkeyListener)
 
 1. **Не показывать todo списки в чате** — замерзают и висят
 2. **Не переименовывать файлы/проект** во время работы — ломает пути/импорты
-3. **Python:** `C:\Program Files\Python312\python.exe` — НЕ в PATH, использовать полный путь
-4. **Сборка:** `build.bat` → PyInstaller → `dist/TalkerBox/`
+3. **Python:** `C:\Program Files\Python313\python.exe` — НЕ в PATH, использовать полный путь
+4. **Сборка:** `build.bat` → PyInstaller → `dist/TalkerBox/` → ISCC → `installer/Output/`
 5. **Коммиты:** На GitHub (`https://github.com/mihalanius/Talker-Box.git`)
-6. **Когда менять дизайн** — если что-то сломалось, откатиться на `git checkout v1.16`
+6. **Когда менять дизайн** — если что-то сломалось, откатиться на `git checkout v1.18`
 7. **Писать только на русском** — пользователь просил
+8. **Модель зашита** — выбор моделей в UI нет, только GigaAM
 
 ---
 
-## Среда
+## Git история
 
-- **OS:** Windows 10/11
-- **Python:** 3.12.7 (`C:\Program Files\Python312\`)
-- **pip пакеты:** PyQt6, sounddevice, numpy, pyperclip, onnxruntime, sherpa-onnx v1.13.7, vosk, pyWin32
-- **Git:** `https://github.com/mihalanius/Talker-Box.git`
-- **Рабочая папка:** `D:\OpenCode_Arhive\Talker Box\`
-- **Модели:** `D:\OpenCode_Arhive\Voice models\`
+| Тег | Описание |
+|-----|----------|
+| v2.0 | Удалена поддержка Vosk/Whisper, GigaAM зашита как единственная модель |
+| v1.18 | Whisper detection fix, скачены Parakeet v2/v3 |
+| v1.17 | Исправлены пути для PyInstaller,.autostart, иконка, звуки, справка |
+| v1.16 | Стабильная версия с выбором моделей |
