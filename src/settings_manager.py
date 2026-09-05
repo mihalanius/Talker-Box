@@ -9,20 +9,18 @@ def _get_base_dir():
 
 SETTINGS_FILE = os.path.join(_get_base_dir(), "settings.json")
 
+BUILTIN_MODEL = {
+    "name": "GigaAM v3 trans-punct",
+    "path": "models/GigaAM",
+    "type": "sherpa-onnx",
+    "language": "ru",
+    "size": "220 MB"
+}
+
 DEFAULT_SETTINGS = {
     "hotkey": "ctrl+win",
     "mode": "hold",
     "auto_send": True,
-    "active_model": "GigaAM v3",
-    "models": [
-        {
-            "name": "GigaAM v3",
-            "path": "",
-            "type": "sherpa-onnx",
-            "language": "ru",
-            "size": "215 MB"
-        }
-    ],
     "auto_start": True,
     "minimize_to_tray": True
 }
@@ -50,12 +48,4 @@ class SettingsManager:
 
     def set(self, key, value):
         self.settings[key] = value
-        self.save()
-
-    def add_model(self, model):
-        self.settings["models"].append(model)
-        self.save()
-
-    def remove_model(self, name):
-        self.settings["models"] = [m for m in self.settings["models"] if m["name"] != name]
         self.save()

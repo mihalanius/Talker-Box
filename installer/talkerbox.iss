@@ -1,6 +1,6 @@
 [Setup]
 AppName=Talker Box
-AppVersion=1.16.0
+AppVersion=2.0.0
 AppPublisher=mihalanius
 DefaultDirName={localappdata}\Programs\Talker Box
 DefaultGroupName=Talker Box

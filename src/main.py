@@ -5,8 +5,7 @@ import threading
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
-                              QFileDialog, QLineEdit, QListWidget, QListWidgetItem,
-                              QGroupBox, QFrame)
+                              QLineEdit, QListWidget, QFrame)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF
 from recorder import Recorder
@@ -629,45 +628,6 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(settings_group)
 
-        model_group = NeonGroupBox("Модели", show_corners=False)
-        model_layout = model_group.layout()
-        model_layout.setContentsMargins(15, 0, 10, 0)
-
-        model_row = QHBoxLayout()
-        model_row.setContentsMargins(0, 0, 0, 0)
-        model_row.setSpacing(6)
-
-        self.model_name_label = QLabel()
-        self.model_name_label.setStyleSheet("color: #eee; font-size: 11px; padding: 2px 0;")
-        self.model_name_label.setWordWrap(True)
-        model_row.addWidget(self.model_name_label, 1)
-
-        change_btn_style = """
-            QPushButton {
-                color: #00ff88;
-                background: transparent;
-                border: 1px solid #00ff88;
-                border-radius: 2px;
-                font: bold 11px 'Segoe UI';
-                padding: 1px 6px;
-            }
-            QPushButton:hover {
-                color: #000000;
-                background: #00ff88;
-            }
-        """
-        self.change_model_btn = QPushButton("Сменить Модель")
-        self.change_model_btn.setStyleSheet(change_btn_style)
-        self.change_model_btn.setFixedHeight(18)
-        self.change_model_btn.setFixedWidth(160)
-        self.change_model_btn.clicked.connect(self._load_new_model)
-        model_row.addWidget(self.change_model_btn)
-
-        model_layout.addLayout(model_row)
-        self._update_model_label()
-
-        layout.addWidget(model_group)
-
         self.neon_active_top = QWidget()
         self.neon_active_top.setFixedHeight(2)
         self.neon_active_top.setStyleSheet("background: transparent;")
@@ -703,7 +663,7 @@ class MainWindow(QMainWindow):
         help_btn.clicked.connect(self._open_help)
         version_layout.addWidget(help_btn)
 
-        version_label = QLabel("Talker Box v.1.16 © Glab 2026")
+        version_label = QLabel("Talker Box v.2.0 © Glab 2026")
         version_label.setFixedHeight(14)
         version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 0px; margin: 0px;")
         version_layout.addWidget(version_label)
@@ -1105,105 +1065,19 @@ class MainWindow(QMainWindow):
     def keyReleaseEvent(self, event):
         return super().keyReleaseEvent(event)
 
-    def _update_model_label(self):
-        active = self.settings.get("active_model", "")
-        if active:
-            models = self.settings.get("models", [])
-            size = ""
-            for m in models:
-                if m["name"] == active:
-                    size = f" ({m['size']})" if m.get("size") else ""
-                    break
-            self.model_name_label.setText(f"● {active}{size}")
-            self.model_name_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 2px 0;")
-        else:
-            self.model_name_label.setText("Модель не загружена")
-            self.model_name_label.setStyleSheet("color: #666; font-size: 11px; padding: 2px 0;")
-
-    def _detect_model_type(self, path):
-        if not os.path.isdir(path):
-            return "unknown"
-        files = os.listdir(path)
-        names_lower = [f.lower() for f in files]
-        all_lower = " ".join(names_lower)
-        has_onnx = any(f.endswith(".onnx") for f in names_lower)
-        has_tokens = any("tokens" in f for f in names_lower)
-        has_encoder = any("encoder" in f for f in names_lower)
-        has_decoder = any("decoder" in f for f in names_lower)
-        has_joint = any("joint" in f or "joiner" in f for f in names_lower)
-        has_final_mdl = any("final.mdl" in f for f in names_lower)
-        has_am = any(f == "am" for f in names_lower)
-        has_conf = any(f == "conf" for f in names_lower)
-        has_graph = any(f == "graph" for f in names_lower)
-        has_whisper_pattern = any(("-encoder" in f and f.endswith(".onnx")) or ("-decoder" in f and f.endswith(".onnx")) for f in names_lower)
-        if has_whisper_pattern and has_tokens:
-            return "whisper"
-        if "whisper" in all_lower and has_onnx:
-            return "whisper"
-        if has_encoder and has_decoder and has_tokens and has_joint:
-            return "sherpa-onnx"
-        if has_encoder and has_decoder and has_tokens:
-            return "sherpa-onnx"
-        if has_onnx and has_tokens:
-            return "sherpa-onnx"
-        if has_final_mdl or (has_am and has_conf and has_graph):
-            return "vosk"
-        return "unknown"
-
-    def _load_new_model(self):
-        path = QFileDialog.getExistingDirectory(self, "Выберите папку с моделью")
-        if not path:
-            return
-        name = os.path.basename(path)
-        model_type = self._detect_model_type(path)
-
-        if model_type == "unknown":
-            QMessageBox.warning(self, "Модель", f"Не удалось определить тип модели в папке:\n{name}\n\nПоддерживаются: sherpa-onnx, vosk, whisper")
-            return
-
-        model = {
-            "name": name,
-            "path": path,
-            "type": model_type,
-            "language": "ru",
-            "size": ""
-        }
-
-        try:
-            test = Transcriber(model)
-        except Exception as e:
-            QMessageBox.warning(self, "Модель", f"Модель не загрузилась:\n{name}\n\nОшибка: {e}")
-            return
-
-        if not test.recognizer:
-            QMessageBox.warning(self, "Модель", f"Модель не загрузилась:\n{name}\n\nТип: {model_type}\nПроверьте что файлы модели на месте.")
-            return
-
-        self.settings.set("models", [model])
-        self.settings.set("active_model", name)
-        self.transcriber = test
-        self._update_model_label()
-
     def load_active_model(self):
-        active_name = self.settings.get("active_model")
-        models = self.settings.get("models", [])
-        for model in models:
-            if model["name"] == active_name:
-                try:
-                    self.transcriber = Transcriber(model)
-                except Exception as e:
-                    log("MODEL_LOAD_CRASH", f"{active_name}: {e}")
-                    self.transcriber = Transcriber()
-                if not self.transcriber.recognizer:
-                    log("MODEL_LOAD_FAIL", f"{active_name} (type={model.get('type')})")
-                break
-        self._update_model_label()
+        from settings_manager import BUILTIN_MODEL
+        model_path = os.path.join(_get_exe_dir(), BUILTIN_MODEL["path"])
+        model = dict(BUILTIN_MODEL, path=model_path)
+        try:
+            self.transcriber = Transcriber(model)
+        except Exception as e:
+            log("MODEL_LOAD_CRASH", f"{model['name']}: {e}")
+            self.transcriber = Transcriber()
+        if not self.transcriber.recognizer:
+            log("MODEL_LOAD_FAIL", f"{model['name']} (type={model.get('type')})")
 
     def show_settings(self):
-        self.show()
-        self.activateWindow()
-
-    def show_models(self):
         self.show()
         self.activateWindow()
 
