@@ -20,7 +20,7 @@ echo [2/5] Building executable...
 cd src
 if exist dist rmdir /S /Q dist
 if exist build rmdir /S /Q build
-..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --add-data "../sounds;sounds" --add-data "../ads.json;." --add-data "hotkey_listener.py;." main.py
+..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --add-data "../sounds;sounds" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talkerbox.png;." --add-data "../help.html;." main.py
 cd ..
 
 echo.
