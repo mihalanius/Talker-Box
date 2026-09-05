@@ -26,7 +26,7 @@ cd ..
 echo.
 echo [3/5] Copying files...
 mkdir dist\TalkerBox 2>nul
-copy dist\TalkerBox\TalkerBox.exe dist\TalkerBox\
+copy src\dist\TalkerBox.exe dist\TalkerBox\
 copy ads.json dist\TalkerBox\
 xcopy /E /I /Y sounds dist\TalkerBox\sounds
 copy talkerbox.png dist\TalkerBox\
