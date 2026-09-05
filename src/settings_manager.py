@@ -1,7 +1,13 @@
 import json
 import os
+import sys
 
-SETTINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.json")
+def _get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(__file__))
+
+SETTINGS_FILE = os.path.join(_get_base_dir(), "settings.json")
 
 DEFAULT_SETTINGS = {
     "hotkey": "ctrl+win",

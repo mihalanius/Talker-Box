@@ -3,3 +3,4 @@ sounddevice>=0.4.6
 numpy>=1.24.0
 pyperclip>=1.8.2
 onnxruntime>=1.16.0
+sherpa-onnx>=1.13.0

@@ -5,9 +5,10 @@
 
 ## Обзор проекта
 
-**Talker Box** — десктопное приложение для голосового ввода текста (push-to-talk). Пользователь зажимает горячую клавишу → говорит → отпускает → текст распознаётся и вставляется в активное окно через буфер обмена + SendInput.
+**Talker Box** — десктопное приложение для голосового ввода текста (push-to-talk). 
+  Пользователь зажимает горячую клавишу → говорит → отпускает → текст распознаётся и вставляется в активное окно через буфер обмена + SendInput.
 
-**Стек:** Python 3.12.7, PyQt6, sherpa-onnx (GigaAM v3 trans-punct, 225 МБ, int8), sounddevice, pyperclip  
+**Стек:** Python 3.13.15, PyQt6, sherpa-onnx (GigaAM v3 trans-punct, 225 МБ, int8), sounddevice, pyperclip  
 **Платформа:** Windows 10/11  
 **Пользователь:** GOLDMAN, работает в cTrader, Node.js, C# WinForms  
 **GitHub:** https://github.com/mihalanius/Talker-Box.git
@@ -163,7 +164,7 @@ main.py → hotkey_hook.py (HotkeyListener)
 **Ссылки:**
 - GigaAM v3: https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16
 - Все модели sherpa-onnx: https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
-- GigaAM Multilingual: https://huggingface.co/ai-sage/GigaAM-Multilingual (PyTorch, НЕ совместим с sherpa-onnx)
+
 
 ---
 

@@ -1,6 +1,6 @@
 [Setup]
 AppName=Talker Box
-AppVersion=1.0.0
+AppVersion=1.16.0
 AppPublisher=mihalanius
 DefaultDirName={autopf}\Talker Box
 DefaultGroupName=Talker Box
@@ -20,11 +20,11 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Name: "autostart"; Description: "Автозапуск при загрузке Windows"; GroupDescription: "Дополнительно:"; Flags: checkedonce
 
 [Files]
-Source: "dist\TalkerBox\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "..\dist\TalkerBox\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Icons]
 Name: "{group}\Talker Box"; Filename: "{app}\TalkerBox.exe"
-Name: "{autostart}\Talker Box"; Filename: "{app}\TalkerBox.exe"; Parameters: "--minimized"; Tasks: autostart
+Name: "{userstartup}\Talker Box"; Filename: "{app}\TalkerBox.exe"; Parameters: "--minimized"; Tasks: autostart
 Name: "{userdesktop}\Talker Box"; Filename: "{app}\TalkerBox.exe"; Tasks: desktopicon
 
 [Registry]
