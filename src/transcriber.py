@@ -1,6 +1,25 @@
 import os
+import sys
 import json
 import numpy as np
+
+def _get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(__file__))
+
+def _resolve_model_path(path):
+    if not path:
+        return path
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+    base = _get_base_dir()
+    resolved = os.path.join(base, path)
+    if os.path.exists(resolved):
+        return resolved
+    if os.path.exists(path):
+        return path
+    return path
 
 class Transcriber:
     def __init__(self, model_config=None):
@@ -25,7 +44,7 @@ class Transcriber:
     def _load_sherpa_onnx(self, config):
         try:
             import sherpa_onnx
-            model_path = config.get("path", "")
+            model_path = _resolve_model_path(config.get("path", ""))
             if not model_path or not os.path.exists(model_path):
                 print(f"Model path not found: {model_path}")
                 return
@@ -131,7 +150,7 @@ class Transcriber:
     def _load_whisper(self, config):
         try:
             import sherpa_onnx
-            model_path = config.get("path", "")
+            model_path = _resolve_model_path(config.get("path", ""))
             if not model_path or not os.path.exists(model_path):
                 print(f"Whisper model path not found: {model_path}")
                 return
@@ -183,7 +202,7 @@ class Transcriber:
     def _load_vosk(self, config):
         try:
             from vosk import Model, KaldiRecognizer
-            model_path = config.get("path", "")
+            model_path = _resolve_model_path(config.get("path", ""))
             if not model_path or not os.path.exists(model_path):
                 print(f"Vosk model path not found: {model_path}")
                 return

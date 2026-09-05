@@ -18,6 +18,16 @@ from hotkey_hook import HotkeyListener, start_capture
 from sounds import play_start_sound, play_stop_sound, play_hover_sound
 from logger import log
 
+def _get_base_dir():
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.dirname(__file__))
+
+def _get_exe_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(__file__))
+
 
 class NeonFrame(QFrame):
     def __init__(self, parent=None, color="#00ff88", corner_size=12, thickness=2):
@@ -434,7 +444,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(400, 350)
@@ -791,7 +801,7 @@ class MainWindow(QMainWindow):
 
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
@@ -803,9 +813,9 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.show_settings)
         tray_menu.addAction(settings_action)
 
-        models_action = QAction("Модели", self)
-        models_action.triggered.connect(self.show_models)
-        tray_menu.addAction(models_action)
+        help_action = QAction("Справка", self)
+        help_action.triggered.connect(self._open_help)
+        tray_menu.addAction(help_action)
 
         tray_menu.addSeparator()
 
@@ -1016,7 +1026,7 @@ class MainWindow(QMainWindow):
         self.neon_active_top._color = "#333"
         self.neon_active_top.update()
         self.waveform.hide_wave()
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
@@ -1125,7 +1135,7 @@ class MainWindow(QMainWindow):
         has_am = any(f == "am" for f in names_lower)
         has_conf = any(f == "conf" for f in names_lower)
         has_graph = any(f == "graph" for f in names_lower)
-        has_whisper_pattern = any(("-encoder.onnx" in f or "-decoder.onnx" in f) for f in names_lower)
+        has_whisper_pattern = any(("-encoder" in f and f.endswith(".onnx")) or ("-decoder" in f and f.endswith(".onnx")) for f in names_lower)
         if has_whisper_pattern and has_tokens:
             return "whisper"
         if "whisper" in all_lower and has_onnx:
@@ -1220,7 +1230,7 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def _open_help(self):
-        help_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "help.html")
+        help_path = os.path.join(_get_base_dir(), "help.html")
         if os.path.exists(help_path):
             import webbrowser
             webbrowser.open("file:///" + help_path.replace("\\", "/"))
@@ -1250,6 +1260,9 @@ class MainWindow(QMainWindow):
 
 def main():
     import traceback
+    import ctypes
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("mihalanius.talkerbox")
     log_path = os.path.join(os.path.dirname(__file__), "crash.log")
     def excepthook(exc_type, exc_value, exc_tb):
         with open(log_path, "w", encoding="utf-8") as f:

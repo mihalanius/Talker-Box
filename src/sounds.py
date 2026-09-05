@@ -1,7 +1,13 @@
 import os
+import sys
 import winsound
 
-SOUNDS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds")
+def _get_sounds_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.join(sys._MEIPASS, "sounds")
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "sounds")
+
+SOUNDS_DIR = _get_sounds_dir()
 
 def play_start_sound():
     try:
