@@ -18,6 +18,8 @@ venv\Scripts\python.exe -m pip install pyinstaller
 echo.
 echo [2/5] Building executable...
 cd src
+if exist dist rmdir /S /Q dist
+if exist build rmdir /S /Q build
 ..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --add-data "../sounds;sounds" --add-data "../ads.json;." --add-data "hotkey_listener.py;." main.py
 cd ..
 
