@@ -542,8 +542,10 @@ class MainWindow(QMainWindow):
         sep_line.paintEvent = lambda e: self._paint_neon_line(sep_line, e)
         layout.addWidget(sep_line)
 
-        settings_group = NeonGroupBox("Настройки", show_corners=False)
-        settings_layout = settings_group.layout()
+        settings_group = QWidget()
+        settings_layout = QVBoxLayout(settings_group)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.setSpacing(0)
 
         mode_layout = QHBoxLayout()
         mode_label = QLabel("Режим:")
