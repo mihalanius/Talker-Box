@@ -2,6 +2,8 @@
   "hotkey": "win+ctrl",
   "mode": "hold",
   "auto_send": true,
+  "auto_start": true,
+  "minimize_to_tray": true,
   "active_model": "GigaAM v3 trans-punct (220 Mb)",
   "models": [
     {
@@ -11,7 +13,5 @@
       "language": "ru",
       "size": ""
     }
-  ],
-  "auto_start": true,
-  "minimize_to_tray": true
+  ]
 }

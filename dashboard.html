@@ -22,7 +22,7 @@
 
   .dashboard {
     position: relative;
-    width: 780px;
+    width: 680px;
     height: 500px;
     background: linear-gradient(145deg, #0d1225 0%, #111830 50%, #0a0f1f 100%);
     border-radius: 24px;
@@ -123,7 +123,7 @@
     background: rgba(0,255,136,0.03);
     border: 1px solid rgba(0,255,136,0.12);
     border-radius: 16px;
-    padding: 16px 14px;
+    padding: 36px 14px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -149,7 +149,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 10px;
+    margin-bottom: 16px;
     transition: all 0.3s;
   }
 
@@ -167,13 +167,22 @@
   }
 
   .side-title {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 12px;
     font-weight: 700;
     color: #00ff88;
     margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  .side-subtitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
   }
 
   .side-desc {
@@ -297,7 +306,7 @@
   }
 
   .signal-value {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 30px;
     font-weight: 900;
     color: #00ff88;
@@ -323,7 +332,7 @@
     background: rgba(0,255,136,0.03);
     border: 1px solid rgba(0,255,136,0.12);
     border-radius: 14px;
-    padding: 14px 18px;
+    padding: 12px 16px;
     transition: all 0.3s;
   }
 
@@ -331,12 +340,18 @@
     border-color: rgba(0,255,136,0.25);
   }
 
+  .bottom-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+
   .bottom-title {
-    font-family: 'Orbitron', sans-serif;
+    font-family: 'Inter', sans-serif;
     font-size: 11px;
     font-weight: 700;
     color: #00ff88;
-    margin-bottom: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -344,25 +359,19 @@
   .bottom-desc {
     font-size: 10px;
     color: #666;
-    margin-bottom: 10px;
     line-height: 1.3;
-  }
-
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
   }
 
   .toggle-label {
     font-size: 11px;
     color: #aaa;
+    display: none;
   }
 
   .toggle {
-    width: 40px;
-    height: 20px;
-    border-radius: 10px;
+    width: 36px;
+    height: 18px;
+    border-radius: 9px;
     background: #1a1f35;
     border: 1px solid rgba(0,255,136,0.2);
     position: relative;
@@ -387,7 +396,7 @@
   }
 
   .toggle.on .toggle-knob {
-    left: 21px;
+    left: 17px;
     background: #00ff88;
     box-shadow: 0 0 8px rgba(0,255,136,0.6);
   }
@@ -395,29 +404,31 @@
   .hotkey-display {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .hotkey-value {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
     font-weight: 700;
-    color: #00f7ff;
-    text-shadow: 0 0 8px rgba(0,247,255,0.4);
+    color: #00ff88;
+    text-shadow: 0 0 8px rgba(0,255,136,0.5);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+  }
+
+  .hotkey-value:hover {
+    border-color: rgba(0,255,136,0.4);
+    background: rgba(0,255,136,0.08);
+    box-shadow: 0 0 12px rgba(0,255,136,0.3);
   }
 
   .hotkey-btn {
-    padding: 5px 14px;
-    border-radius: 6px;
-    border: 1px solid rgba(0,255,136,0.3);
-    background: rgba(0,255,136,0.08);
-    color: #00ff88;
-    font-size: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: none;
   }
 
   .hotkey-btn:hover {
@@ -450,9 +461,9 @@
     background: rgba(0,255,136,0.04);
     border: 1px solid rgba(0,255,136,0.1);
     border-radius: 10px;
-    font-size: 10px;
+    font-size: 12px;
     color: #aaa;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 
   .instruction svg {
@@ -519,11 +530,14 @@
       <div class="logo-text">Talker Box</div>
     </div>
     <div class="header-right">
-      <div class="header-btn" title="Сбросить">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      <div class="header-btn" title="Справка">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><text x="12" y="17" text-anchor="middle" font-size="18" font-weight="700" fill="currentColor" stroke="none">?</text></svg>
       </div>
       <div class="header-btn" title="Настройки">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </div>
+      <div class="header-btn" title="Свернуть в трей">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </div>
       <div class="header-btn" title="Закрыть">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -533,7 +547,7 @@
 
   <div class="instruction">
     <svg viewBox="0 0 24 24" width="14" height="14"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="#00ff88"/></svg>
-    Откройте программу, где будете писать текст голосом. Наведите курсор на поле ввода текста, после чего активизируйте курсор в «поле ввода» нажатием клавиши ЛКМ. Нажмите горячую клавишу и начните говорить.
+    Откройте программу, где будете писать текст голосом. Наведите курсор на поле ввода текста, после чего активируйте курсор в «поле ввода текста» нажатием клавиши ЛКМ. Нажмите горячую клавишу и начните начитывать текст или общаться.
   </div>
 
   <div class="main-content">
@@ -542,8 +556,9 @@
       <div class="side-icon">
         <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
       </div>
+      <div class="side-subtitle">Режим Hold</div>
       <div class="side-title">Удерживать</div>
-      <div class="side-desc">Микрофон активен, пока удерживается горячая клавиша</div>
+      <div class="side-desc">Нажмите и удерживайте горячую клавишу пока диктуете текст и микрофон активен.</div>
       <div class="side-indicator"></div>
     </div>
 
@@ -590,30 +605,31 @@
       <div class="side-icon">
         <svg viewBox="0 0 24 24"><path d="M15 15.5v-3.19l3.34 1.23c.19.07.33.25.33.46 0 .34-.27.61-.61.61H5.21c-.34 0-.61-.27-.61-.61 0-.21.14-.39.33-.46L8.29 12.3V15.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V9c0-.83.67-1.5 1.5-1.5h1c.83 0 1.5.67 1.5 1.5v3.19L4.85 10.46c-.19-.07-.33-.25-.33-.46 0-.34.27-.61.61-.61h12.76c.34 0 .61.27.61.61 0 .21-.14.39-.33.46L15.21 10.6V15.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V9c0-.83.67-1.5 1.5-1.5h1c.83 0 1.5.67 1.5 1.5v3.19l3.34-1.23c.19-.07.33-.25.33-.46 0-.34-.27-.61-.61-.61H5.21c-.34 0-.61.27-.61.61 0 .21.14.39.33.46L8.29 12.3V15.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V9c0-.83.67-1.5 1.5-1.5h1c.83 0 1.5.67 1.5 1.5v3.19L4.85 10.46c-.19-.07-.33-.25-.33-.46 0-.34.27-.61.61-.61h12.76c.34 0 .61.27.61.61 0 .21-.14.39-.33.46L15.21 10.6V15.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V9c0-.83.67-1.5 1.5-1.5h1c.83 0 1.5.67 1.5 1.5v3.19z"/></svg>
       </div>
+      <div class="side-subtitle">Режим Toggle</div>
       <div class="side-title">Нажал — нажал</div>
-      <div class="side-desc">Нажмите горячую клавишу, чтобы начать и снова нажать, чтобы остановить запись</div>
+      <div class="side-desc">Нажмите горячую клавишу, чтобы начать запись и снова нажмите, чтобы остановить запись.</div>
       <div class="side-indicator"></div>
     </div>
   </div>
 
   <div class="bottom-panels">
     <div class="bottom-panel">
-      <div class="bottom-title">Авто-отправка (Enter)</div>
-      <div class="bottom-desc">Отправляет текст после окончания записи</div>
-      <div class="toggle-row">
-        <span class="toggle-label">Выкл.</span>
+      <div class="bottom-header">
+        <div class="bottom-title">Авто-отправка (Enter)</div>
         <div class="toggle on" onclick="this.classList.toggle('on')">
           <div class="toggle-knob"></div>
         </div>
       </div>
+      <div class="bottom-desc">Отправляет текст после окончания записи</div>
     </div>
     <div class="bottom-panel">
-      <div class="bottom-title">Горячая клавиша</div>
-      <div class="bottom-desc">Нажмите любую клавишу или комбинацию</div>
-      <div class="hotkey-display">
-        <span class="hotkey-value">Ctrl + Win</span>
-        <button class="hotkey-btn">Изменить</button>
+      <div class="bottom-header">
+        <div class="bottom-title">Горячая клавиша</div>
+        <div class="hotkey-display">
+          <span class="hotkey-value" onclick="this.textContent = prompt('Введите горячую клавишу:', this.textContent) || this.textContent">Ctrl + Win</span>
+        </div>
       </div>
+      <div class="bottom-desc">Нажмите любую клавишу или комбинацию</div>
     </div>
   </div>
 </div>

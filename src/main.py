@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
                               QLineEdit, QListWidget, QFrame)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics
 from recorder import Recorder
 from transcriber import Transcriber
 from settings_manager import SettingsManager
@@ -182,6 +182,42 @@ class StarsWidget(QWidget):
                 p.drawEllipse(x, y, int(s), int(s))
         finally:
             p.end()
+
+
+class NeonLabel(QWidget):
+    def __init__(self, text="", font_size=16, color="#00ff88", parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._font_size = font_size
+        self._color = QColor(color)
+        self._font_family = "Segoe UI"
+        self.setStyleSheet("background: transparent;")
+        font = QFont(self._font_family, self._font_size)
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        self.setFixedSize(fm.horizontalAdvance(text) + 40, fm.height() + 20)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        font = QFont(self._font_family, self._font_size)
+        font.setBold(True)
+        p.setFont(font)
+        r, g, b = self._color.red(), self._color.green(), self._color.blue()
+        fm = p.fontMetrics()
+        x = (self.width() - fm.horizontalAdvance(self._text)) // 2
+        y = self.height() // 2 + fm.ascent() // 2
+        for blur_r in [10, 6, 3]:
+            alpha = max(5, int(40 * (1 - blur_r / 10)))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(QColor(r, g, b, alpha)))
+            for dx in range(-blur_r, blur_r + 1, 2):
+                for dy in range(-blur_r, blur_r + 1, 2):
+                    if dx * dx + dy * dy <= blur_r * blur_r:
+                        p.drawText(x + dx, y + dy, self._text)
+        p.setPen(QPen(self._color, 1))
+        p.drawText(x, y, self._text)
+        p.end()
 
 
 class NeonCheckBox(QWidget):
@@ -446,248 +482,430 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setFixedSize(400, 350)
+        self.setFixedSize(585, 419)
         self.setStyleSheet("""
-            QMainWindow { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0a1628, stop:1 #1a1a2e); }
-            QLabel { color: #eee; }
-            QMessageBox {
-                background-color: #1a1a2e;
+            QMainWindow {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #0d1225, stop:0.5 #111830, stop:1 #0a0f1f);
             }
-            QMessageBox QLabel {
-                color: #00ff88;
-            }
+            QLabel { color: #e0e0e0; background: transparent; }
+            QMessageBox { background-color: #1a1a2e; }
+            QMessageBox QLabel { color: #00ff88; }
             QPushButton {
-                background-color: #16213e;
-                color: #00f7ff;
-                border: 1px solid #00f7ff;
-                border-radius: 5px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover { background-color: #1a1a4e; }
-            QComboBox, QLineEdit {
-                background-color: #16213e;
-                color: #eee;
-                border: 1px solid #00f7ff;
-                border-radius: 3px;
-                padding: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #16213e;
-                color: #ffffff;
-                selection-background-color: #1a1a4e;
-                selection-color: #ffffff;
-                border: 1px solid #00f7ff;
-            }
-            QComboBox QAbstractItemView QScrollBar:vertical {
-                background: #16213e;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QComboBox QAbstractItemView QScrollBar::handle:vertical {
-                background: #00ff88;
-                min-height: 20px;
-                border-radius: 5px;
-            }
-            QComboBox QAbstractItemView QScrollBar::add-line:vertical,
-            QComboBox QAbstractItemView QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-            QCheckBox { color: #eee; }
-            QListWidget {
-                background-color: #16213e;
-                color: #eee;
-                border: none;
+                background-color: transparent;
+                color: #aaa;
+                border: 1px solid rgba(255,255,255,0.15);
+                border-radius: 18px;
                 padding: 0;
-                margin: 0;
-                outline: 0;
+                font-size: 14px;
             }
-            QListWidget::item {
-                padding: 2px 4px;
-                margin: 0;
+            QPushButton:hover {
+                border-color: #00ff88;
+                color: #00ff88;
             }
         """)
 
         central = QWidget()
+        central.setStyleSheet("background: transparent;")
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setSpacing(2)
-        layout.setContentsMargins(10, 10, 10, 5)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(24, 16, 24, 16)
+        root.setSpacing(0)
 
-        self._stars_widget = StarsWidget(central)
-        self._stars_widget.lower()
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        header_left = QHBoxLayout()
+        header_left.setSpacing(8)
+        logo_label = QLabel()
+        logo_label.setFixedSize(32, 32)
+        logo_label.setStyleSheet("background: transparent;")
+        logo_label.paintEvent = lambda e: self._paint_cube_logo(logo_label, e)
+        header_left.addWidget(logo_label)
+        title = NeonLabel("Talker Box", font_size=17, color="#00ff88")
+        font_path = os.path.join(_get_base_dir(), "fonts", "Orbitron.ttf")
+        if os.path.exists(font_path):
+            QFontDatabase.addApplicationFont(font_path)
+            title._font_family = "Orbitron"
+        header_left.addWidget(title)
+        header.addLayout(header_left)
+        header.addStretch()
 
-        sep_line_top_hint = QWidget()
-        sep_line_top_hint.setFixedHeight(3)
-        sep_line_top_hint.setStyleSheet("background: transparent;")
-        sep_line_top_hint.paintEvent = lambda e: self._paint_neon_line(sep_line_top_hint, e)
-        layout.addWidget(sep_line_top_hint)
+        self.btn_help = QPushButton("?")
+        self.btn_help.setFixedSize(36, 36)
+        self.btn_help.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        self.btn_help.clicked.connect(self._open_help)
+        self.btn_help.paintEvent = lambda e: self._paint_header_btn(self.btn_help, e, "help")
+        header.addWidget(self.btn_help)
 
-        spacer_top = QWidget()
-        spacer_top.setFixedHeight(4)
-        layout.addWidget(spacer_top)
+        btn_tray = QPushButton()
+        btn_tray.setFixedSize(36, 36)
+        btn_tray.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        btn_tray.clicked.connect(self.hide_to_tray)
+        btn_tray.paintEvent = lambda e: self._paint_header_btn(btn_tray, e, "minimize")
+        header.addWidget(btn_tray)
 
-        hint_label = QLabel("Откройте программу, где будете писать текст голосом.\nНаведите курсор на поле ввода текста, после чего:\nАктивируйте курсор в поле нажатием ЛКМ.\nНажмите горячую клавишу и начните говорить.")
-        hint_label.setWordWrap(True)
-        hint_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 13px 12px; background-color: transparent; border: none;")
-        hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(hint_label)
+        btn_close = QPushButton()
+        btn_close.setFixedSize(36, 36)
+        btn_close.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        btn_close.clicked.connect(self.quit_app)
+        btn_close.paintEvent = lambda e: self._paint_header_btn(btn_close, e, "close")
+        header.addWidget(btn_close)
+        root.addLayout(header)
 
-        spacer = QWidget()
-        spacer.setFixedHeight(6)
-        layout.addWidget(spacer)
+        spacer1 = QWidget()
+        spacer1.setFixedHeight(6)
+        root.addWidget(spacer1)
 
-        sep_line = QWidget()
-        sep_line.setFixedHeight(3)
-        sep_line.setStyleSheet("background: transparent;")
-        sep_line.paintEvent = lambda e: self._paint_neon_line(sep_line, e)
-        layout.addWidget(sep_line)
-
-        settings_group = QWidget()
-        settings_layout = QVBoxLayout(settings_group)
-        settings_layout.setContentsMargins(0, 0, 0, 0)
-        settings_layout.setSpacing(0)
-
-        mode_layout = QHBoxLayout()
-        mode_label = QLabel("Режим:")
-        mode_label.setStyleSheet("font-size: 11px;")
-        mode_layout.addWidget(mode_label)
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Hold (удерживай)", "Toggle (нажал-нажал)"])
-        self.mode_combo.setCurrentIndex(0 if self.settings.get("mode") == "hold" else 1)
-        self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
-        self.mode_combo.setFixedHeight(18)
-        self.mode_combo.setStyleSheet("""
-            QComboBox {
-                color: #00ff88;
-                background: transparent;
-                border: 1px solid #00ff88;
-                border-radius: 2px;
-                font: bold 11px 'Segoe UI';
-                padding: 1px 6px;
-            }
-            QComboBox:hover {
-                color: #000000;
-                background: #00ff88;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 14px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 5px solid #00ff88;
-                margin-right: 4px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #1a1a2e;
-                color: #00ff88;
-                border: 1px solid #00ff88;
-                selection-background-color: #00ff88;
-                selection-color: #000;
+        hint_widget = QWidget()
+        hint_widget.setStyleSheet("""
+            QWidget {
+                background: rgba(0,255,136,0.04);
+                border: 1px solid rgba(0,255,136,0.1);
+                border-radius: 10px;
             }
         """)
-        mode_layout.addWidget(self.mode_combo)
-        settings_layout.addLayout(mode_layout)
+        hint_layout = QHBoxLayout(hint_widget)
+        hint_layout.setContentsMargins(12, 6, 12, 6)
+        hint_label = QLabel(
+            "Откройте программу, где будете писать текст голосом. Наведите курсор на поле ввода текста, "
+            "после чего активируйте курсор в «поле ввода текста» нажатием клавиши ЛКМ. "
+            "Нажмите горячую клавишу и начните начитывать текст или общаться."
+        )
+        hint_label.setWordWrap(True)
+        hint_label.setStyleSheet("color: #00ff88; font-size: 11px; background: transparent; border: none;")
+        hint_label.setAlignment(Qt.AlignmentFlag.AlignJustify)
+        hint_layout.addWidget(hint_label)
+        root.addWidget(hint_widget)
 
-        auto_send_row = QHBoxLayout()
-        auto_send_row.setContentsMargins(0, 0, 0, 0)
-        auto_send_row.setSpacing(6)
+        spacer2 = QWidget()
+        spacer2.setFixedHeight(8)
+        root.addWidget(spacer2)
+
+        main_row = QHBoxLayout()
+        main_row.setSpacing(12)
+
+        self.hold_panel = self._create_mode_panel("Режим Hold", "Удерживать",
+            "Нажмите и удерживайте горячую клавишу пока диктуете текст и микрофон активен.", True)
+        main_row.addWidget(self.hold_panel)
+
+        center_widget = self._create_center_widget()
+        main_row.addWidget(center_widget, 1)
+
+        self.toggle_panel = self._create_mode_panel("Режим Toggle", "Нажал \u2014 нажал",
+            "Нажмите Хоткей, чтобы начать запись и снова нажмите чтобы остановить запись.", False)
+        main_row.addWidget(self.toggle_panel)
+        root.addLayout(main_row)
+
+        spacer3 = QWidget()
+        spacer3.setFixedHeight(10)
+        root.addWidget(spacer3)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(12)
+
+        auto_widget = QWidget()
+        auto_widget.setFixedHeight(60)
+        auto_widget.setStyleSheet("""
+            QWidget {
+                background: rgba(0,255,136,0.03);
+                border: 1px solid rgba(0,255,136,0.12);
+                border-radius: 14px;
+            }
+        """)
+        auto_layout = QVBoxLayout(auto_widget)
+        auto_layout.setContentsMargins(14, 10, 14, 10)
+        auto_layout.setSpacing(2)
+        auto_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        auto_header = QHBoxLayout()
+        auto_title = QLabel("Авто-отправка (Enter)")
+        auto_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
+        auto_header.addWidget(auto_title)
+        auto_header.addStretch()
         self.auto_send_toggle = NeonCheckBox(checked=self.settings.get("auto_send"))
         self.auto_send_toggle.toggled.connect(self.on_auto_send_toggled)
-        auto_send_row.addWidget(self.auto_send_toggle)
-        auto_send_label = QLabel("Авто-отправка (Enter)")
-        auto_send_label.setStyleSheet("color: #eee; font-size: 11px;")
-        auto_send_row.addWidget(auto_send_label)
-        auto_send_row.addStretch()
-        settings_layout.addLayout(auto_send_row)
+        auto_header.addWidget(self.auto_send_toggle)
+        auto_layout.addLayout(auto_header)
+        auto_desc = QLabel("Отправляет текст после окончания записи")
+        auto_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
+        auto_layout.addWidget(auto_desc)
+        bottom_row.addWidget(auto_widget)
 
-        hotkey_layout = QHBoxLayout()
-        hotkey_label = QLabel("Горячая клавиша:")
-        hotkey_label.setStyleSheet("font-size: 11px;")
-        hotkey_layout.addWidget(hotkey_label)
+        hotkey_widget = QWidget()
+        hotkey_widget.setFixedHeight(60)
+        hotkey_widget.setStyleSheet("""
+            QWidget {
+                background: rgba(0,255,136,0.03);
+                border: 1px solid rgba(0,255,136,0.12);
+                border-radius: 14px;
+            }
+        """)
+        hotkey_layout = QVBoxLayout(hotkey_widget)
+        hotkey_layout.setContentsMargins(14, 10, 14, 10)
+        hotkey_layout.setSpacing(2)
+        hotkey_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        hotkey_header = QHBoxLayout()
+        hotkey_title = QLabel("Горячая клавиша")
+        hotkey_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
+        hotkey_header.addWidget(hotkey_title)
+        hotkey_header.addStretch()
         self.hotkey_btn = QPushButton(self._format_hotkey(self.settings.get("hotkey", "f9")))
-        self.hotkey_btn.setFixedHeight(18)
+        self.hotkey_btn.setFixedHeight(14)
         self.hotkey_btn.setStyleSheet("""
             QPushButton {
-                color: #00ff88;
-                background: transparent;
-                border: 1px solid #00ff88;
-                border-radius: 2px;
-                font: bold 11px 'Segoe UI';
-                padding: 1px 6px;
+                color: #00ff88; background: transparent;
+                border: 1px solid rgba(0,255,136,0.3); border-radius: 4px;
+                font: bold 11px 'Segoe UI'; padding: 0px 8px;
             }
             QPushButton:hover {
-                color: #000000;
-                background: #00ff88;
+                border-color: #00ff88;
+                background: rgba(0,255,136,0.08);
             }
         """)
         self.hotkey_btn.clicked.connect(self.start_hotkey_capture)
         self._capturing_hotkey = False
-        hotkey_layout.addWidget(self.hotkey_btn)
-        settings_layout.addLayout(hotkey_layout)
+        hotkey_header.addWidget(self.hotkey_btn)
+        hotkey_layout.addLayout(hotkey_header)
+        hotkey_desc = QLabel("Нажмите любую клавишу или комбинацию")
+        hotkey_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
+        hotkey_layout.addWidget(hotkey_desc)
+        bottom_row.addWidget(hotkey_widget)
+        root.addLayout(bottom_row)
 
-        layout.addWidget(settings_group)
+    def _paint_cube_logo(self, widget, event):
+        p = QPainter(widget)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor("#00ff88"), 1.5))
+        p.setBrush(QBrush(QColor(0, 255, 136, 30)))
+        p.drawPolygon(QPolygonF([QPointF(16, 2), QPointF(30, 9), QPointF(16, 16), QPointF(2, 9)]))
+        p.setBrush(QBrush(QColor(0, 255, 136, 15)))
+        p.drawPolygon(QPolygonF([QPointF(2, 9), QPointF(16, 16), QPointF(16, 30), QPointF(2, 23)]))
+        p.setBrush(QBrush(QColor(0, 255, 136, 20)))
+        p.drawPolygon(QPolygonF([QPointF(30, 9), QPointF(16, 16), QPointF(16, 30), QPointF(30, 23)]))
+        p.end()
 
-        self.neon_active_top = QWidget()
-        self.neon_active_top.setFixedHeight(2)
-        self.neon_active_top.setStyleSheet("background: transparent;")
-        self.neon_active_top._color = "#333"
-        self.neon_active_top.paintEvent = lambda e: self._paint_neon_active(self.neon_active_top, e)
-        layout.addWidget(self.neon_active_top)
+    def _paint_checkmark(self, widget, event):
+        p = QPainter(widget)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor("#00ff88"), 2))
+        p.drawLine(2, 7, 5, 11)
+        p.drawLine(5, 11, 12, 2)
+        p.end()
 
-        sep_line_top = QWidget()
-        sep_line_top.setFixedHeight(2)
-        sep_line_top.setStyleSheet("background: transparent;")
-        sep_line_top.paintEvent = lambda e: self._paint_neon_line(sep_line_top, e)
-        layout.addWidget(sep_line_top)
+    def _paint_header_btn(self, widget, event, icon_type):
+        p = QPainter(widget)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        s = widget.width()
+        is_hover = widget.underMouse()
+        border_color = QColor("#00ff88") if is_hover else QColor("#555")
+        icon_color = QColor("#00ff88") if is_hover else QColor("#aaa")
+        p.setPen(QPen(border_color, 1))
+        p.setBrush(QBrush(QColor(255, 255, 255, 5)))
+        p.drawEllipse(1, 1, s - 2, s - 2)
+        p.setPen(QPen(icon_color, 1.5))
+        cx, cy = s // 2, s // 2
+        if icon_type == "minimize":
+            p.drawLine(cx - 5, cy, cx + 5, cy)
+        elif icon_type == "close":
+            p.drawLine(cx - 4, cy - 4, cx + 4, cy + 4)
+            p.drawLine(cx + 4, cy - 4, cx - 4, cy + 4)
+        elif icon_type == "help":
+            font = QFont("Segoe UI", 13, QFont.Weight.Bold)
+            p.setFont(font)
+            p.drawText(widget.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+        p.end()
 
-        version_layout = QHBoxLayout()
-        version_layout.setContentsMargins(0, 0, 0, 0)
-        version_layout.setSpacing(20)
-        version_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    def _create_mode_panel(self, subtitle, title, desc, active):
+        panel = QWidget()
+        panel.setCursor(Qt.CursorShape.PointingHandCursor)
+        panel._active = active
+        self._update_panel_style(panel, active)
 
-        help_btn = QPushButton("Справка")
-        help_btn.setStyleSheet("""
-            QPushButton {
-                color: #00f7ff;
-                background: transparent;
-                border: none;
-                font: 11px 'Segoe UI';
-                padding: 0px;
-            }
-            QPushButton:hover {
-                color: #00ff88;
-                text-decoration: underline;
-            }
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 28, 10, 12)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        icon_container = QWidget()
+        icon_container.setFixedSize(44, 44)
+        icon_container._is_hold = "HOLD" in subtitle.upper()
+        icon_container.setStyleSheet(f"""
+            border: 2px solid {'#00ff88' if active else '#444'};
+            border-radius: 22px;
+            background: {'rgba(0,255,136,0.1)' if active else 'transparent'};
         """)
-        help_btn.clicked.connect(self._open_help)
-        version_layout.addWidget(help_btn)
+        icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
+        icon_container._is_hold = "HOLD" in subtitle.upper()
+        panel._icon_container = icon_container
+        layout.addWidget(icon_container, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        version_label = QLabel("Talker Box v.2.0 © Glab 2026")
-        version_label.setFixedHeight(14)
-        version_label.setStyleSheet("color: #00ff88; font-size: 11px; padding: 0px; margin: 0px;")
-        version_layout.addWidget(version_label)
+        sub = QLabel(subtitle.upper())
+        sub.setStyleSheet(f"color: {'#00ff88' if active else '#666'}; font: bold 12px 'Segoe UI'; background: transparent; border: none; text-transform: uppercase;")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sub)
 
-        neon_line = QWidget()
-        neon_line.setFixedHeight(3)
-        neon_line.setStyleSheet("background: transparent;")
-        neon_line.paintEvent = lambda e: self._paint_neon_line(neon_line, e)
+        t = QLabel(title)
+        t.setStyleSheet(f"color: {'#00ff88' if active else '#666'}; font: bold 14px 'Segoe UI'; background: transparent; border: none;")
+        t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(t)
 
-        self.neon_active = QWidget()
-        self.neon_active.setFixedHeight(3)
-        self.neon_active.setStyleSheet("background: transparent;")
-        self.neon_active._color = "#333"
-        self.neon_active.paintEvent = lambda e: self._paint_neon_active(self.neon_active, e)
+        d = QLabel(desc)
+        d.setWordWrap(True)
+        d.setStyleSheet("color: #888; font-size: 11px; background: transparent; border: none;")
+        d.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(d)
 
-        bottom_group = QVBoxLayout()
-        bottom_group.setContentsMargins(0, 0, 0, 0)
-        bottom_group.setSpacing(0)
-        bottom_group.addLayout(version_layout)
-        bottom_group.addWidget(neon_line)
-        bottom_group.addWidget(self.neon_active)
-        layout.addLayout(bottom_group)
+        panel.mousePressEvent = lambda e, p=panel, s=subtitle: self._on_panel_click(p, s)
+        panel._title_label = t
+        panel._subtitle_label = sub
+        return panel
+
+    def _update_panel_style(self, panel, active):
+        panel.setStyleSheet(f"""
+            QWidget {{
+                background: rgba(0,255,136,0.03);
+                border: 2px solid {'#00ff88' if active else '#444'};
+                border-radius: 16px;
+            }}
+            QWidget:hover {{
+                border-color: {'#00ff88' if active else '#666'};
+            }}
+        """)
+
+    def _paint_mode_icon(self, widget, event, active):
+        p = QPainter(widget)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = "#00ff88" if active else "#555"
+        p.setPen(QPen(QColor(color), 1.5))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        cx, cy = widget.width() // 2, widget.height() // 2
+        is_hold = getattr(widget, '_is_hold', True)
+        if is_hold:
+            p.drawRoundedRect(cx - 6, cy - 8, 12, 10, 2, 2)
+            p.drawRoundedRect(cx - 8, cy + 2, 16, 6, 2, 2)
+            p.drawEllipse(cx - 2, cy - 4, 4, 4)
+        else:
+            p.drawRoundedRect(cx - 10, cy - 4, 20, 8, 4, 4)
+            p.setBrush(QBrush(QColor(color)))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.drawEllipse(cx + 2, cy - 2, 4, 4)
+        p.end()
+
+    def _on_panel_click(self, panel, subtitle):
+        is_hold = "Hold" in subtitle
+        mode = "hold" if is_hold else "toggle"
+        self.settings.set("mode", mode)
+        try:
+            import winsound
+            wav = os.path.join(_get_base_dir(), "sounds", "ping.wav")
+            if os.path.exists(wav):
+                winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except:
+            pass
+        if hasattr(self, 'mode_combo'):
+            self.mode_combo.setCurrentIndex(0 if is_hold else 1)
+        self.hold_panel._active = is_hold
+        self.toggle_panel._active = not is_hold
+        self._update_panel_style(self.hold_panel, is_hold)
+        self._update_panel_style(self.toggle_panel, not is_hold)
+        self._update_panel_texts(self.hold_panel, is_hold)
+        self._update_panel_texts(self.toggle_panel, not is_hold)
+
+    def _update_panel_texts(self, panel, active):
+        color = "#00ff88" if active else "#666"
+        panel._subtitle_label.setStyleSheet(f"color: {color}; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
+        panel._title_label.setStyleSheet(f"color: {color}; font: bold 14px 'Segoe UI'; background: transparent; border: none;")
+        icon_container = panel._icon_container
+        icon_container.setStyleSheet(f"""
+            border: 2px solid {'#00ff88' if active else '#444'};
+            border-radius: 22px;
+            background: {'rgba(0,255,136,0.1)' if active else 'transparent'};
+        """)
+        icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
+        icon_container.update()
+
+    def _create_center_widget(self):
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._circle_widget = QWidget()
+        self._circle_widget.setFixedSize(200, 200)
+        self._circle_widget.setStyleSheet("background: transparent;")
+        self._signal_level = 76
+        self._circle_widget.paintEvent = lambda e: self._paint_circle(self._circle_widget, e)
+        layout.addWidget(self._circle_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self._mascot_label = QLabel()
+        mascot_path = os.path.join(_get_base_dir(), "mascot.png")
+        if os.path.exists(mascot_path):
+            self._mascot_label.setPixmap(QPixmap(mascot_path).scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self._mascot_label.setText("\U0001f916")
+            self._mascot_label.setStyleSheet("font-size: 48px; background: transparent; border: none;")
+        self._mascot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._mascot_label.setParent(self._circle_widget)
+        self._mascot_label.setFixedSize(80, 80)
+        self._mascot_label.move(60, 35)
+
+        sig_label = QLabel("УРОВЕНЬ СИГНАЛА")
+        sig_label.setStyleSheet("color: #666; font-size: 8px; font-weight: bold; letter-spacing: 2px; background: transparent; border: none;")
+        sig_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sig_label.setParent(self._circle_widget)
+        sig_label.setFixedSize(180, 14)
+        sig_label.move(10, 120)
+
+        self._signal_value_label = QLabel(f"{self._signal_level}%")
+        self._signal_value_label.setStyleSheet("color: #00ff88; font: bold 28px 'Segoe UI'; background: transparent; border: none;")
+        self._signal_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._signal_value_label.setParent(self._circle_widget)
+        self._signal_value_label.setFixedSize(180, 36)
+        self._signal_value_label.move(10, 132)
+
+        self._signal_timer = QTimer()
+        self._signal_timer.timeout.connect(self._update_signal)
+        self._signal_timer.start(1500)
+
+        return widget
+
+    def _paint_circle(self, widget, event):
+        p = QPainter(widget)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = widget.width(), widget.height()
+        cx, cy, r = w // 2, h // 2, 90
+
+        pen_track = QPen(QColor(0, 255, 136, 20), 4)
+        p.setPen(pen_track)
+        p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+        span = int(360 * 16 * self._signal_level / 100)
+        pen_active = QPen(QColor("#00ff88"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        p.setPen(pen_active)
+        p.drawArc(cx - r, cy - r, r * 2, r * 2, 90 * 16, -span)
+
+        r2 = r - 4 - 3
+        if self.is_recording:
+            pen_inner = QPen(QColor("#00ff88"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            p.setPen(pen_inner)
+            p.drawEllipse(cx - r2, cy - r2, r2 * 2, r2 * 2)
+            glow = QColor(0, 255, 136, 30)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(glow))
+            p.drawEllipse(cx - r2 - 4, cy - r2 - 4, r2 * 2 + 8, r2 * 2 + 8)
+        else:
+            pen_inner = QPen(QColor(0, 255, 136, 30), 2)
+            p.setPen(pen_inner)
+            p.drawEllipse(cx - r2, cy - r2, r2 * 2, r2 * 2)
+
+        p.end()
+
+    def _update_signal(self):
+        self._signal_level = max(20, min(95, self._signal_level + int((0.5 - 0.5) * 8)))
+        import random
+        self._signal_level = max(20, min(95, self._signal_level + random.randint(-4, 4)))
+        self._signal_value_label.setText(f"{self._signal_level}%")
+        self._circle_widget.update()
 
     def _paint_neon_line(self, widget, event):
         painter = QPainter(widget)
@@ -960,33 +1178,20 @@ class MainWindow(QMainWindow):
         self._suppress_hotkey = False
 
     def on_recording_started(self):
-        self.neon_active._color = "#00ff88"
-        self.neon_active.update()
-        self.neon_active_top._color = "#00ff88"
-        self.neon_active_top.update()
+        self._circle_widget.update()
         self.tray.setIcon(self.create_mic_icon("#00ff88"))
 
     def on_recording_stopped(self):
-        self.neon_active._color = "#f7ff00"
-        self.neon_active.update()
-        self.neon_active_top._color = "#f7ff00"
-        self.neon_active_top.update()
+        self._circle_widget.update()
         self.tray.setIcon(self.create_mic_icon("#f7ff00"))
 
     def on_transcribing_started(self):
         self.is_transcribing = True
-        self.neon_active._color = "#00f7ff"
-        self.neon_active.update()
-        self.neon_active_top._color = "#00f7ff"
-        self.neon_active_top.update()
+        self.tray.setIcon(self.create_mic_icon("#00f7ff"))
         self.waveform.show_transcribing()
 
     def on_transcribing_finished(self):
         self.is_transcribing = False
-        self.neon_active._color = "#333"
-        self.neon_active.update()
-        self.neon_active_top._color = "#333"
-        self.neon_active_top.update()
         self.waveform.hide_wave()
         icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
         if os.path.exists(icon_path):
@@ -997,12 +1202,19 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self, index):
         mode = "hold" if index == 0 else "toggle"
         self.settings.set("mode", mode)
-
     def on_auto_send_changed(self, state):
         self.settings.set("auto_send", state == Qt.CheckState.Checked.value)
 
     def on_auto_send_toggled(self, checked):
         self.settings.set("auto_send", checked)
+        try:
+            import winsound
+            sound = "transition_up.wav" if checked else "transition_down.wav"
+            wav = os.path.join(_get_base_dir(), "sounds", sound)
+            if os.path.exists(wav):
+                winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except:
+            pass
 
     def _format_hotkey(self, hotkey):
         modifier_order = {"ctrl": 0, "shift": 1, "alt": 2, "win": 3}
@@ -1046,6 +1258,13 @@ class MainWindow(QMainWindow):
             self.settings.set("hotkey", combo)
             self.hotkey_btn.setText(self._format_hotkey(combo))
             self.hotkey_btn.setStyleSheet(default_style)
+            try:
+                import winsound
+                wav = os.path.join(_get_base_dir(), "sounds", "transition_up.wav")
+                if os.path.exists(wav):
+                    winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            except:
+                pass
             QTimer.singleShot(100, lambda c=combo: self._start_listener(c))
         else:
             hotkey = self.settings.get("hotkey", "ctrl+win")
@@ -1055,8 +1274,6 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, '_stars_widget'):
-            self._stars_widget.resize(self.centralWidget().size())
 
     def eventFilter(self, obj, event):
         return super().eventFilter(obj, event) if hasattr(super(), 'eventFilter') else False
