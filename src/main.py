@@ -479,7 +479,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(585, 419)
@@ -981,7 +981,7 @@ class MainWindow(QMainWindow):
 
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
@@ -1021,7 +1021,7 @@ class MainWindow(QMainWindow):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(QColor(color).darker(300)))
         p.drawEllipse(4, 4, 56, 56)
-        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             icon_pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             x = (64 - 48) // 2
@@ -1196,7 +1196,7 @@ class MainWindow(QMainWindow):
     def on_transcribing_finished(self):
         self.is_transcribing = False
         self.waveform.hide_wave()
-        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
+        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:

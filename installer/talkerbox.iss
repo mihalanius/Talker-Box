@@ -9,7 +9,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-SetupIconFile=assets\talkerbox.ico
+SetupIconFile=assets\talker_box.ico
 UninstallDisplayIcon={app}\TalkerBox.exe
 
 [Languages]
