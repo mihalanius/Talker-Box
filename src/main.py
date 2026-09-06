@@ -1014,18 +1014,21 @@ class MainWindow(QMainWindow):
         self.tray.show()
 
     def create_mic_icon(self, color):
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QBrush(QColor(color)))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(16, 8, 32, 40)
-        painter.drawEllipse(22, 36, 20, 10)
-        painter.drawRect(28, 46, 8, 12)
-        painter.drawRect(18, 44, 28, 4)
-        painter.end()
-        return QIcon(pixmap)
+        base = QPixmap(64, 64)
+        base.fill(Qt.GlobalColor.transparent)
+        p = QPainter(base)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor(color).darker(300)))
+        p.drawEllipse(4, 4, 56, 56)
+        icon_path = os.path.join(_get_base_dir(), "talkerbox.png")
+        if os.path.exists(icon_path):
+            icon_pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            x = (64 - 48) // 2
+            y = (64 - 48) // 2
+            p.drawPixmap(x, y, icon_pixmap)
+        p.end()
+        return QIcon(base)
 
     def init_hotkey(self):
         self._last_toggle_time = 0
