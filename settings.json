@@ -1,6 +1,6 @@
 {
   "hotkey": "win+ctrl",
-  "mode": "hold",
+  "mode": "toggle",
   "auto_send": true,
   "auto_start": true,
   "minimize_to_tray": true,
