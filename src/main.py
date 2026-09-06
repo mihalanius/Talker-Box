@@ -567,9 +567,9 @@ class MainWindow(QMainWindow):
         hint_layout = QHBoxLayout(hint_widget)
         hint_layout.setContentsMargins(12, 6, 12, 6)
         hint_label = QLabel(
-            "Откройте программу, где будете писать текст голосом. Наведите курсор на поле ввода текста, "
-            "после чего активируйте курсор в «поле ввода текста» нажатием клавиши ЛКМ. "
-            "Нажмите горячую клавишу и начните начитывать текст или общаться."
+            "Откройте программу, где будете писать текст голосом. Наведите курсор на «поле ввода текста», "
+            "после чего активизируйте курсор в «поле ввода текста» нажатием клавиши «ЛКМ». "
+            "Нажмите горячую клавишу и начните начитывать текст в Word или общаться с агентами AI."
         )
         hint_label.setWordWrap(True)
         hint_label.setStyleSheet("color: #00ff88; font-size: 11px; background: transparent; border: none;")
@@ -649,12 +649,12 @@ class MainWindow(QMainWindow):
         hotkey_header.addWidget(hotkey_title)
         hotkey_header.addStretch()
         self.hotkey_btn = QPushButton(self._format_hotkey(self.settings.get("hotkey", "f9")))
-        self.hotkey_btn.setFixedHeight(14)
+        self.hotkey_btn.setFixedHeight(18)
         self.hotkey_btn.setStyleSheet("""
             QPushButton {
                 color: #00ff88; background: transparent;
                 border: 1px solid rgba(0,255,136,0.3); border-radius: 4px;
-                font: bold 11px 'Segoe UI'; padding: 0px 8px;
+                font: bold 12px 'Segoe UI'; padding: 0px 8px;
             }
             QPushButton:hover {
                 border-color: #00ff88;
@@ -1246,7 +1246,7 @@ class MainWindow(QMainWindow):
                 background: transparent;
                 border: 1px solid #00ff88;
                 border-radius: 2px;
-                font: bold 11px 'Segoe UI';
+                font: bold 12px 'Segoe UI';
                 padding: 1px 6px;
             }
             QPushButton:hover {
