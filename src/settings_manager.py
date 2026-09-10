@@ -1,13 +1,8 @@
 import json
 import os
-import sys
+from paths import get_exe_dir
 
-def _get_base_dir():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(__file__))
-
-SETTINGS_FILE = os.path.join(_get_base_dir(), "settings.json")
+SETTINGS_FILE = os.path.join(get_exe_dir(), "settings.json")
 
 BUILTIN_MODEL = {
     "name": "GigaAM v3 trans-punct",
@@ -36,6 +31,9 @@ class SettingsManager:
                 with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
                     self.settings.update(loaded)
+                # Очистка устаревших полей (v2.0)
+                self.settings.pop("active_model", None)
+                self.settings.pop("models", None)
             except:
                 pass
 

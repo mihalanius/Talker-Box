@@ -1,19 +1,15 @@
 import os
-import sys
 import json
 import numpy as np
+from paths import get_exe_dir
 
-def _get_base_dir():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(__file__))
 
 def _resolve_model_path(path):
     if not path:
         return path
     if os.path.isabs(path) and os.path.exists(path):
         return path
-    base = _get_base_dir()
+    base = get_exe_dir()
     resolved = os.path.join(base, path)
     if os.path.exists(resolved):
         return resolved

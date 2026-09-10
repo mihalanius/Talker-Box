@@ -1,5 +1,5 @@
 @echo off
-cd /d "D:\OpenCode_Arhive\Talker Box"
+cd /d "%~dp0"
 
 echo ========================================
 echo Talker Box - Build Script

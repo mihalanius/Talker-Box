@@ -16,16 +16,7 @@ from waveform import WaveformWindow
 from hotkey_hook import HotkeyListener, start_capture
 from sounds import play_start_sound, play_stop_sound, play_hover_sound
 from logger import log
-
-def _get_base_dir():
-    if getattr(sys, 'frozen', False):
-        return sys._MEIPASS
-    return os.path.dirname(os.path.dirname(__file__))
-
-def _get_exe_dir():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(__file__))
+from paths import get_base_dir, get_exe_dir
 
 
 class NeonFrame(QFrame):
@@ -137,51 +128,6 @@ class NeonGroupBox(QWidget):
             painter.drawLine(text_w, 8, w - s - 4, 8)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.end()
-
-
-class StarsWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._stars = []
-        self._init_stars(50)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(150)
-        self._phase = 0
-
-    def _init_stars(self, count):
-        import random
-        for _ in range(count):
-            self._stars.append({
-                'x': random.random(),
-                'y': random.random(),
-                'size': random.uniform(1, 2.5),
-                'phase': random.random() * 6.28,
-                'speed': random.uniform(0.02, 0.08),
-            })
-
-    def _tick(self):
-        self._phase += 0.1
-        self.update()
-
-    def paintEvent(self, event):
-        import math
-        p = QPainter(self)
-        try:
-            p.setRenderHint(QPainter.RenderHint.Antialiasing)
-            w = self.width()
-            h = self.height()
-            for star in self._stars:
-                opacity = 0.3 + 0.7 * abs(math.sin(self._phase * star['speed'] + star['phase']))
-                color = QColor(255, 255, 255, int(opacity * 255))
-                p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(QBrush(color))
-                x = int(star['x'] * w)
-                y = int(star['y'] * h)
-                s = star['size']
-                p.drawEllipse(x, y, int(s), int(s))
-        finally:
-            p.end()
 
 
 class NeonLabel(QWidget):
@@ -479,7 +425,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Talker Box")
-        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
+        icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(585, 419)
@@ -522,7 +468,7 @@ class MainWindow(QMainWindow):
         logo_label.paintEvent = lambda e: self._paint_cube_logo(logo_label, e)
         header_left.addWidget(logo_label)
         title = NeonLabel("Talker Box", font_size=17, color="#00ff88")
-        font_path = os.path.join(_get_base_dir(), "fonts", "Orbitron.ttf")
+        font_path = os.path.join(get_base_dir(), "fonts", "Orbitron.ttf")
         if os.path.exists(font_path):
             QFontDatabase.addApplicationFont(font_path)
             title._font_family = "Orbitron"
@@ -796,7 +742,7 @@ class MainWindow(QMainWindow):
         self.settings.set("mode", mode)
         try:
             import winsound
-            wav = os.path.join(_get_base_dir(), "sounds", "ping.wav")
+            wav = os.path.join(get_base_dir(), "sounds", "ping.wav")
             if os.path.exists(wav):
                 winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except:
@@ -839,7 +785,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._circle_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self._mascot_label = QLabel()
-        mascot_path = os.path.join(_get_base_dir(), "mascot.png")
+        mascot_path = os.path.join(get_base_dir(), "mascot.png")
         if os.path.exists(mascot_path):
             self._mascot_label.setPixmap(QPixmap(mascot_path).scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
@@ -981,7 +927,7 @@ class MainWindow(QMainWindow):
 
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
-        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
+        icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
@@ -1021,7 +967,7 @@ class MainWindow(QMainWindow):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(QColor(color).darker(300)))
         p.drawEllipse(4, 4, 56, 56)
-        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
+        icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             icon_pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             x = (64 - 48) // 2
@@ -1196,7 +1142,7 @@ class MainWindow(QMainWindow):
     def on_transcribing_finished(self):
         self.is_transcribing = False
         self.waveform.hide_wave()
-        icon_path = os.path.join(_get_base_dir(), "talker_box.png")
+        icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.tray.setIcon(QIcon(icon_path))
         else:
@@ -1213,7 +1159,7 @@ class MainWindow(QMainWindow):
         try:
             import winsound
             sound = "transition_up.wav" if checked else "transition_down.wav"
-            wav = os.path.join(_get_base_dir(), "sounds", sound)
+            wav = os.path.join(get_base_dir(), "sounds", sound)
             if os.path.exists(wav):
                 winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except:
@@ -1228,7 +1174,7 @@ class MainWindow(QMainWindow):
     def start_hotkey_capture(self):
         self._stop_listener()
         self._capturing_hotkey = True
-        self.hotkey_btn.setText("Нажмите клавишу (или комбинацию)...")
+        self.hotkey_btn.setText("Нажмите клавишу")
         self.hotkey_btn.setStyleSheet("""
             QPushButton {
                 color: #000;
@@ -1263,7 +1209,7 @@ class MainWindow(QMainWindow):
             self.hotkey_btn.setStyleSheet(default_style)
             try:
                 import winsound
-                wav = os.path.join(_get_base_dir(), "sounds", "transition_up.wav")
+                wav = os.path.join(get_base_dir(), "sounds", "transition_up.wav")
                 if os.path.exists(wav):
                     winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
             except:
@@ -1289,15 +1235,21 @@ class MainWindow(QMainWindow):
 
     def load_active_model(self):
         from settings_manager import BUILTIN_MODEL
-        model_path = os.path.join(_get_exe_dir(), BUILTIN_MODEL["path"])
+        from model_loader import ModelLoader
+        model_path = os.path.join(get_exe_dir(), BUILTIN_MODEL["path"])
         model = dict(BUILTIN_MODEL, path=model_path)
-        try:
-            self.transcriber = Transcriber(model)
-        except Exception as e:
-            log("MODEL_LOAD_CRASH", f"{model['name']}: {e}")
-            self.transcriber = Transcriber()
-        if not self.transcriber.recognizer:
-            log("MODEL_LOAD_FAIL", f"{model['name']} (type={model.get('type')})")
+        self._model_loader = ModelLoader(model)
+        self._model_loader.finished.connect(self._on_model_loaded)
+        self._model_loader.error.connect(self._on_model_error)
+        self._model_loader.start()
+    
+    def _on_model_loaded(self, transcriber):
+        self.transcriber = transcriber
+        log("MODEL_LOADED", f"{transcriber.model_config.get('name', 'unknown')}")
+    
+    def _on_model_error(self, error):
+        log("MODEL_LOAD_ERROR", error)
+        self.transcriber = Transcriber()
 
     def show_settings(self):
         self.show()
@@ -1326,7 +1278,7 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def _open_help(self):
-        help_path = os.path.join(_get_base_dir(), "help.html")
+        help_path = os.path.join(get_base_dir(), "help.html")
         if os.path.exists(help_path):
             import webbrowser
             webbrowser.open("file:///" + help_path.replace("\\", "/"))
