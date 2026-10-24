@@ -1,10 +1,10 @@
 [Setup]
 AppName=Talker Box
-AppVersion=2.0.0
+AppVersion=2.2.0
 AppPublisher=mihalanius
 DefaultDirName={localappdata}\Programs\Talker Box
 DefaultGroupName=Talker Box
-OutputBaseFilename=TalkerBoxSetup-v2.0
+OutputBaseFilename=TalkerBoxSetup-v2.2
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
