@@ -5,16 +5,18 @@ import threading
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
-                              QLineEdit, QListWidget, QFrame)
+                              QLineEdit, QListWidget, QFrame, QSlider, QColorDialog)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics
 from recorder import Recorder
 from transcriber import Transcriber
+from stream_recognizer import PhraseStream
+from stream_overlay import StreamOverlay
 from settings_manager import SettingsManager
 from ad_manager import AdManager
 from waveform import WaveformWindow
 from hotkey_hook import HotkeyListener, start_capture
-from sounds import play_start_sound, play_stop_sound, play_hover_sound
+from sounds import play_start_sound, play_stop_sound, play_hover_sound, play_reset_sound
 from logger import log
 from paths import get_base_dir, get_exe_dir
 
@@ -247,6 +249,8 @@ class Signals(QObject):
     transcribing_started = pyqtSignal()
     transcribing_finished = pyqtSignal()
     hotkey_captured = pyqtSignal(str)
+    stream_phrase = pyqtSignal(str, bool)   # живой текст: (текст, это черновик)
+    session_text = pyqtSignal(str)          # точный текст диктовки (как уйдёт в поле)
 
 
 def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
@@ -316,27 +320,49 @@ def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
         inp.union.ki.dwFlags = KEYEVENTF_UNICODE
         user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
-    VK_CONTROL = 0x11
-    VK_V = 0x56
     VK_RETURN = 0x0D
-    VK_LSHIFT = 0xA0
+    VK_TAB = 0x09
 
-    if is_terminal:
-        send_key(VK_LSHIFT)
-        send_key(VK_CONTROL)
-        time.sleep(0.03)
-        send_key(VK_V)
-        time.sleep(0.03)
-        send_key(VK_V, KEYEVENTF_KEYUP)
-        send_key(VK_CONTROL, KEYEVENTF_KEYUP)
-        send_key(VK_LSHIFT, KEYEVENTF_KEYUP)
-    else:
-        send_key(VK_CONTROL)
-        time.sleep(0.03)
-        send_key(VK_V)
-        time.sleep(0.03)
-        send_key(VK_V, KEYEVENTF_KEYUP)
-        send_key(VK_CONTROL, KEYEVENTF_KEYUP)
+    # печатаем текст СИМВОЛАМИ через SendInput — буфер обмена не трогаем ВООБЩЕ,
+    # чтобы скопированные картинки и текст оставались на месте
+    units = []
+    for ch in text:
+        cp = ord(ch)
+        if cp > 0xFFFF:                      # символы вне BMP — суррогатной парой
+            cp -= 0x10000
+            units.append(0xD800 + (cp >> 10))
+            units.append(0xDC00 + (cp & 0x3FF))
+        else:
+            units.append(cp)
+
+    inputs = []
+
+    def push(vk, scan, flags):
+        inp = INPUT()
+        inp.type = INPUT_KEYBOARD
+        inp.union.ki.wVk = vk
+        inp.union.ki.wScan = scan
+        inp.union.ki.dwFlags = flags
+        inputs.append(inp)
+
+    for u in units:
+        if u in (0x0D, 0x0A):                # перевод строки — как клавиша Enter
+            push(VK_RETURN, 0, 0)
+            push(VK_RETURN, 0, KEYEVENTF_KEYUP)
+        elif u == 0x09:                      # табуляция
+            push(VK_TAB, 0, 0)
+            push(VK_TAB, 0, KEYEVENTF_KEYUP)
+        else:
+            push(0, u, KEYEVENTF_UNICODE)
+            push(0, u, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
+
+    # шлём пачками — быстро и без «заеданий»
+    batch = 64
+    for i in range(0, len(inputs), batch):
+        chunk = inputs[i:i + batch]
+        arr = (INPUT * len(chunk))(*chunk)
+        user32.SendInput(len(chunk), arr, ctypes.sizeof(INPUT))
+        time.sleep(0.01)
 
     if auto_send:
         time.sleep(0.15)
@@ -396,13 +422,26 @@ class MainWindow(QMainWindow):
         self._hotkey_signal.connect(self._on_hotkey_event, Qt.ConnectionType.QueuedConnection)
         self.settings = SettingsManager()
         self.recorder = Recorder()
+        # живое распознавание (GigaAM) + облачко над полем ввода
+        self.phrase_stream = PhraseStream(None, lambda t, p=False: self.signals.stream_phrase.emit(t, p))
+        self.stream_overlay = StreamOverlay()
+        self.stream_overlay.send_button.clicked.connect(self._on_send_click)   # «Отправить» = второй жм хоткея
+        self._stream_committed = ""
+        self._session_busy = False
+        self._rmb_was_down = False
+        # правая кнопка мыши во время диктовки — сброс и чтение заново
+        self._rmb_timer = QTimer(self)
+        self._rmb_timer.timeout.connect(self._check_rmb_reset)
+        self._rmb_timer.start(30)   # часто — чтобы короткий клик по крестику не проскакивал
         self.transcriber = None
         self.ad_manager = AdManager()
         self.signals = Signals()
+        self.signals.session_text.connect(self._on_session_text)
         self.is_recording = False
         self.is_transcribing = False
         self.hold_mode = False
         self._suppress_hotkey = False
+        self._stream_epoch = 0      # поколение сессии: гасит запоздалый текст после сброса
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -475,27 +514,6 @@ class MainWindow(QMainWindow):
         header_left.addWidget(title)
         header.addLayout(header_left)
         header.addStretch()
-
-        self.btn_help = QPushButton("?")
-        self.btn_help.setFixedSize(36, 36)
-        self.btn_help.setStyleSheet("QPushButton { background: transparent; border: none; }")
-        self.btn_help.clicked.connect(self._open_help)
-        self.btn_help.paintEvent = lambda e: self._paint_header_btn(self.btn_help, e, "help")
-        header.addWidget(self.btn_help)
-
-        btn_tray = QPushButton()
-        btn_tray.setFixedSize(36, 36)
-        btn_tray.setStyleSheet("QPushButton { background: transparent; border: none; }")
-        btn_tray.clicked.connect(self.hide_to_tray)
-        btn_tray.paintEvent = lambda e: self._paint_header_btn(btn_tray, e, "minimize")
-        header.addWidget(btn_tray)
-
-        btn_close = QPushButton()
-        btn_close.setFixedSize(36, 36)
-        btn_close.setStyleSheet("QPushButton { background: transparent; border: none; }")
-        btn_close.clicked.connect(self.quit_app)
-        btn_close.paintEvent = lambda e: self._paint_header_btn(btn_close, e, "close")
-        header.addWidget(btn_close)
         root.addLayout(header)
 
         spacer1 = QWidget()
@@ -523,6 +541,9 @@ class MainWindow(QMainWindow):
         hint_layout.addWidget(hint_label)
         root.addWidget(hint_widget)
 
+        # живой текст показывается в плавающем облачке над полем ввода
+        self.signals.stream_phrase.connect(self._on_stream_phrase)
+
         spacer2 = QWidget()
         spacer2.setFixedHeight(8)
         root.addWidget(spacer2)
@@ -530,15 +551,19 @@ class MainWindow(QMainWindow):
         main_row = QHBoxLayout()
         main_row.setSpacing(12)
 
+        # какой режим сохранён — такая и подсветка при запуске (по умолчанию «нажал-нажал»)
+        saved_mode = self.settings.get("mode", "toggle")
         self.hold_panel = self._create_mode_panel("Режим Hold", "Удерживать",
-            "Нажмите и удерживайте горячую клавишу пока диктуете текст и микрофон активен.", True)
+            "Нажмите и удерживайте горячую клавишу пока диктуете текст и микрофон активен.",
+            saved_mode == "hold")
         main_row.addWidget(self.hold_panel)
 
         center_widget = self._create_center_widget()
         main_row.addWidget(center_widget, 1)
 
         self.toggle_panel = self._create_mode_panel("Режим Toggle", "Нажал \u2014 нажал",
-            "Нажмите Хоткей, чтобы начать запись и снова нажмите чтобы остановить запись.", False)
+            "Нажмите Хоткей, чтобы начать запись и снова нажмите чтобы остановить запись.",
+            saved_mode != "hold")
         main_row.addWidget(self.toggle_panel)
         root.addLayout(main_row)
 
@@ -550,7 +575,8 @@ class MainWindow(QMainWindow):
         bottom_row.setSpacing(12)
 
         auto_widget = QWidget()
-        auto_widget.setFixedHeight(60)
+        auto_widget.setObjectName("ctrl-auto")
+        auto_widget.setFixedHeight(40)
         auto_widget.setStyleSheet("""
             QWidget {
                 background: rgba(0,255,136,0.03);
@@ -559,7 +585,7 @@ class MainWindow(QMainWindow):
             }
         """)
         auto_layout = QVBoxLayout(auto_widget)
-        auto_layout.setContentsMargins(14, 10, 14, 10)
+        auto_layout.setContentsMargins(12, 5, 12, 5)
         auto_layout.setSpacing(2)
         auto_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         auto_header = QHBoxLayout()
@@ -577,7 +603,8 @@ class MainWindow(QMainWindow):
         bottom_row.addWidget(auto_widget)
 
         hotkey_widget = QWidget()
-        hotkey_widget.setFixedHeight(60)
+        hotkey_widget.setObjectName("ctrl-hotkey")
+        hotkey_widget.setFixedHeight(40)
         hotkey_widget.setStyleSheet("""
             QWidget {
                 background: rgba(0,255,136,0.03);
@@ -586,7 +613,7 @@ class MainWindow(QMainWindow):
             }
         """)
         hotkey_layout = QVBoxLayout(hotkey_widget)
-        hotkey_layout.setContentsMargins(14, 10, 14, 10)
+        hotkey_layout.setContentsMargins(12, 5, 12, 5)
         hotkey_layout.setSpacing(2)
         hotkey_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         hotkey_header = QHBoxLayout()
@@ -616,6 +643,334 @@ class MainWindow(QMainWindow):
         hotkey_layout.addWidget(hotkey_desc)
         bottom_row.addWidget(hotkey_widget)
         root.addLayout(bottom_row)
+
+        # ===== Вкладки: Главная / Настройки =====
+        tabs = QHBoxLayout()
+        tabs.setSpacing(6)
+        self.btn_tab_main = QPushButton("Главная")
+        self.btn_tab_set = QPushButton("Настройки")
+        self.btn_tab_help = QPushButton("Справка")
+        self.btn_tab_main.clicked.connect(lambda: self._show_tab("main"))
+        self.btn_tab_set.clicked.connect(lambda: self._show_tab("settings"))
+        self.btn_tab_help.clicked.connect(lambda: self._show_tab("help"))
+        tabs.addWidget(self.btn_tab_main)
+        tabs.addWidget(self.btn_tab_set)
+        tabs.addWidget(self.btn_tab_help)
+        tabs.addStretch()
+        root.insertLayout(1, tabs)
+
+        # содержимое окна становится страницей «Главная» (окно не растёт)
+        self.main_page = QWidget()
+        main_layout = QVBoxLayout(self.main_page)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        while root.count() > 2:
+            item = root.takeAt(2)
+            if item.widget():
+                main_layout.addWidget(item.widget())
+            elif item.layout():
+                main_layout.addLayout(item.layout())
+            elif item.spacerItem():
+                main_layout.addSpacerItem(item.spacerItem())
+        root.addWidget(self.main_page)
+
+        # страница «Настройки»
+        self.settings_page = QWidget()
+        self._build_settings_page()
+        root.addWidget(self.settings_page)
+        self.settings_page.hide()
+
+        # страница «Справка»
+        self.help_page = QWidget()
+        self._build_help_page()
+        root.addWidget(self.help_page)
+        self.help_page.hide()
+        self._show_tab("main")
+
+    def _build_help_page(self):
+        lay = QVBoxLayout(self.help_page)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+        title = QLabel("Справка")
+        title.setStyleSheet("color: #00ff88; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
+        lay.addWidget(title)
+        text = QLabel(
+            "1. Откройте программу, где будете писать текст голосом, и нажмите в поле ввода.\n"
+            "2. Нажмите горячую клавишу и начинайте диктовать текст.\n"
+            "3. Над полем ввода появится облачко — в нём видно, как модель слышит вашу речь.\n"
+            "4. Пауза в речи — фраза выравнивается в точный текст (тот, что уйдёт в поле).\n"
+            "5. Увидели ошибку? Правая кнопка мыши или крестик в облачке — сброс\n"
+            "    (со звуком и красной подсветкой). Диктовку продолжаете по новой клавише.\n"
+            "6. Текст отправляется в поле ввода автоматически — облачко исчезает.\n\n"
+            "Настройки облачка (цвет, шрифт, прозрачность, микрофон) — на вкладке «Настройки».\n"
+            "Если текст распознаётся хуже — поднесите микрофон ближе или выберите\n"
+            "внешний микрофон в настройках программы.")
+        text.setStyleSheet("color: #9a9a9a; font: 12px 'Segoe UI'; background: transparent; border: none;")
+        text.setWordWrap(True)
+        lay.addWidget(text)
+        lay.addStretch()
+
+    def _tab_style(self, active):
+        return ("QPushButton { color: %s; background: %s; border: 1px solid rgba(0,255,136,%s);"
+                " border-radius: 4px; font: bold 11px 'Segoe UI'; padding: 0 12px; }"
+                "QPushButton:hover { border-color: #00ff88; }") % (
+            "#00ff88" if active else "#7fa",
+            "rgba(0,255,136,0.12)" if active else "transparent",
+            "0.6" if active else "0.25")
+
+    def _show_tab(self, which):
+        self.main_page.setVisible(which == "main")
+        self.settings_page.setVisible(which == "settings")
+        self.help_page.setVisible(which == "help")
+        self.btn_tab_main.setStyleSheet(self._tab_style(which == "main"))
+        self.btn_tab_set.setStyleSheet(self._tab_style(which == "settings"))
+        self.btn_tab_help.setStyleSheet(self._tab_style(which == "help"))
+
+    def _build_settings_page(self):
+        lay = QVBoxLayout(self.settings_page)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+        title = QLabel("Настройки облачка")
+        title.setStyleSheet("color: #00ff88; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
+        lay.addWidget(title)
+
+        # блоки управления (авто-отправка, горячая клавиша) — теперь здесь
+        for name in ("ctrl-auto", "ctrl-hotkey"):
+            w = self.findChild(QWidget, name)
+            if w:
+                lay.addWidget(w)
+
+        # карточка включения облачка — в стиле «Авто-отправка»
+        cloud_widget = QWidget()
+        cloud_widget.setFixedHeight(40)
+        cloud_widget.setStyleSheet("""
+            QWidget {
+                background: rgba(0,255,136,0.03);
+                border: 1px solid rgba(0,255,136,0.12);
+                border-radius: 14px;
+            }
+        """)
+        cloud_layout = QVBoxLayout(cloud_widget)
+        cloud_layout.setContentsMargins(12, 5, 12, 5)
+        cloud_layout.setSpacing(2)
+        cloud_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        cloud_header = QHBoxLayout()
+        cloud_title = QLabel("Облачко распознаваемого текста в момент диктовки.")
+        cloud_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
+        cloud_header.addWidget(cloud_title)
+        cloud_header.addStretch()
+        self.cloud_toggle = NeonCheckBox(checked=self.settings.get("cloud_enabled", True))
+        self.cloud_toggle.toggled.connect(self._toggle_cloud)
+        cloud_header.addWidget(self.cloud_toggle)
+        cloud_layout.addLayout(cloud_header)
+        cloud_desc = QLabel("При включении отображает распознаваемый текст на экране в облачке")
+        cloud_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
+        cloud_layout.addWidget(cloud_desc)
+        lay.addWidget(cloud_widget)
+
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+        row1.addWidget(self._cloud_color_btn("Фон", "cloud_bg", "#ececec"))
+        row1.addWidget(self._cloud_color_btn("Текст", "cloud_fg", "#5c5c5c"))
+        row1.addStretch()
+        lay.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        fl = QLabel("Шрифт:")
+        fl.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        row2.addWidget(fl)
+        self.cloud_font_size = QComboBox()
+        self.cloud_font_size.setFixedWidth(52)
+        self.cloud_font_size.setEditable(False)   # только выбор из списка, текст ввести нельзя
+        self.cloud_font_size.setStyleSheet(
+            "QComboBox { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
+            " border-radius: 4px; padding: 2px 4px; }"
+            "QComboBox:hover { border-color: #00aa66; }"
+            "QComboBox::drop-down { border: none; width: 16px; }"
+            "QComboBox QAbstractItemView { background: #ffffff; color: #222222;"
+            " selection-background-color: #d6f5e8; }")
+        sizes = ["14", "16", "18"]
+        self.cloud_font_size.addItems(sizes)
+        saved_size = str(self.settings.get("cloud_font", 16))
+        if saved_size not in sizes:   # старое значение вне списка — берём ближайшее
+            try:
+                saved_size = min(sizes, key=lambda s: abs(int(s) - int(saved_size)))
+            except Exception:
+                saved_size = "16"
+        self.cloud_font_size.setCurrentText(saved_size)
+        self.cloud_font_size.currentTextChanged.connect(self._apply_cloud_settings)
+        row2.addWidget(self.cloud_font_size)
+
+        ol = QLabel("Прозрачность:")
+        ol.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        row2.addWidget(ol)
+        self.cloud_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.cloud_opacity.setRange(20, 100)
+        self.cloud_opacity.setValue(int(self.settings.get("cloud_opacity", 100)))
+        self.cloud_opacity.setFixedWidth(140)
+        self.cloud_opacity.valueChanged.connect(self._apply_cloud_settings)
+        row2.addWidget(self.cloud_opacity)
+        row2.addStretch()
+        lay.addLayout(row2)
+
+        # выбор шрифта системы
+        row3 = QHBoxLayout()
+        row3.setSpacing(8)
+        nf = QLabel("Шрифт системы:")
+        nf.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        row3.addWidget(nf)
+        self.cloud_font_name = QComboBox()
+        self.cloud_font_name.setFixedWidth(190)
+        self.cloud_font_name.setStyleSheet(
+            "QComboBox { background: #ffffff; color: #222222;"
+            " border: 1px solid #999999; border-radius: 4px;"
+            " font: 11px 'Segoe UI'; padding: 2px 6px; }"
+            "QComboBox:hover { border-color: #00aa66; }"
+            "QComboBox::drop-down { border: none; width: 20px; }"
+            "QComboBox QAbstractItemView { background: #ffffff; color: #222222;"
+            " border: 1px solid #999999; selection-background-color: #cfe8d8;"
+            " selection-color: #000000; outline: none; }")
+        view = self.cloud_font_name.view()
+        view.setStyleSheet("QListView { background: #ffffff; color: #222222; border: 1px solid #999999; }")
+        pal = view.palette()
+        pal.setColor(view.backgroundRole(), QColor("#ffffff"))
+        pal.setColor(view.foregroundRole(), QColor("#222222"))
+        view.setPalette(pal)
+        families = QFontDatabase.families()
+        self.cloud_font_name.addItem("(по умолчанию)")
+        self.cloud_font_name.setItemData(0, QColor("#222222"), Qt.ItemDataRole.ForegroundRole)
+        self.cloud_font_name.setItemData(0, QColor("#ffffff"), Qt.ItemDataRole.BackgroundRole)
+        for fam in families:
+            self.cloud_font_name.addItem(fam)
+            idx = self.cloud_font_name.count() - 1
+            # белый фон, чёрный текст, своё начертание — всё видно сразу
+            self.cloud_font_name.setItemData(idx, QColor("#222222"), Qt.ItemDataRole.ForegroundRole)
+            self.cloud_font_name.setItemData(idx, QColor("#ffffff"), Qt.ItemDataRole.BackgroundRole)
+            self.cloud_font_name.setItemData(idx, QFont(fam), Qt.ItemDataRole.FontRole)
+        saved = self.settings.get("cloud_font_name", "")
+        if saved and saved in families:
+            self.cloud_font_name.setCurrentText(saved)
+        self.cloud_font_name.currentTextChanged.connect(self._apply_cloud_settings)
+        row3.addWidget(self.cloud_font_name)
+        row3.addStretch()
+        lay.addLayout(row3)
+
+        # выбор микрофона (средствами программы, без настроек Windows)
+        row4 = QHBoxLayout()
+        row4.setSpacing(8)
+        mf = QLabel("Микрофон:")
+        mf.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        row4.addWidget(mf)
+        self.mic_combo = QComboBox()
+        self.mic_combo.setFixedWidth(190)
+        self.mic_combo.setStyleSheet(self.cloud_font_name.styleSheet())
+        self.mic_combo.addItem("(системный по умолчанию)")
+        try:
+            import sounddevice as _sd
+            for d in _sd.query_devices():
+                if d.get("max_input_channels", 0) > 0:
+                    self.mic_combo.addItem(d["name"])
+        except Exception:
+            pass
+        saved_mic = self.settings.get("mic_device", "")
+        if saved_mic:
+            i = self.mic_combo.findText(saved_mic)
+            if i >= 0:
+                self.mic_combo.setCurrentIndex(i)
+        self.mic_combo.currentIndexChanged.connect(self._on_mic_changed)
+        row4.addWidget(self.mic_combo)
+        row4.addStretch()
+        lay.addLayout(row4)
+        self._on_mic_changed()
+
+        lay.addStretch()
+        self._apply_cloud_settings()
+
+    def _input_style(self):
+        return ("QLineEdit { color: #00ff88; background: transparent;"
+                " border: 1px solid rgba(0,255,136,0.3); border-radius: 4px;"
+                " font: bold 11px 'Segoe UI'; padding: 0 6px; }")
+
+    def _cloud_color_btn(self, title, key, default):
+        b = QPushButton(title)
+        b.setFixedHeight(24)
+        b.setStyleSheet(self._tab_style(True))
+        b.clicked.connect(lambda: self._pick_cloud_color(key, default))
+        return b
+
+    def _pick_cloud_color(self, key, default):
+        dlg = QColorDialog(QColor(self.settings.get(key, default)), self)
+        dlg.setWindowTitle("Цвет облачка")
+        # подписи внутри палитры — тёмно-серые, читаемые
+        dlg.setStyleSheet(
+            "QLabel { color: #3c3c3c; }"
+            "QPushButton { color: #222222; }"
+            "QLineEdit { color: #222222; background: #ffffff; }"
+            "QSpinBox { color: #222222; background: #ffffff; }"
+            "QCheckBox { color: #3c3c3c; }")
+        if dlg.exec():
+            col = dlg.selectedColor()
+            if col.isValid():
+                self.settings.set(key, col.name())
+                self._apply_cloud_settings()
+
+    def _toggle_cloud(self, checked):
+        self.settings.set("cloud_enabled", bool(checked))
+        self._apply_cloud_settings()
+        # капсула и облачко меняются местами: включено — волна в облачке
+        if self.recorder.is_recording:
+            if checked:
+                self.waveform.hide_wave()
+            else:
+                self.waveform.show_recording()
+
+    def _on_mic_changed(self):
+        """Выбор микрофона: программа использует его напрямую, без настроек Windows."""
+        name = self.mic_combo.currentText() if self.mic_combo else ""
+        dev = None
+        if name and name != "(системный по умолчанию)":
+            try:
+                import sounddevice as _sd
+                for i, d in enumerate(_sd.query_devices()):
+                    if d.get("max_input_channels", 0) > 0 and d["name"] == name:
+                        dev = i
+                        break
+            except Exception:
+                dev = None
+            self.settings.set("mic_device", name)
+        else:
+            self.settings.set("mic_device", "")
+        self.recorder.device = dev
+        log("MIC_SELECTED", f"{name or 'default'} -> device={dev}")
+
+    def _apply_cloud_settings(self):
+        try:
+            size = int(self.cloud_font_size.currentText())
+        except Exception:
+            size = 16
+        size = max(8, min(18, size))
+        # фокус с настроек убираем — чтобы диктовка не «влетала» в поля
+        try:
+            f = QApplication.focusWidget()
+            if f is not None:
+                f.clearFocus()
+        except Exception:
+            pass
+        opacity = int(self.cloud_opacity.value()) if self.cloud_opacity else 100
+        fam = self.cloud_font_name.currentText() if self.cloud_font_name else ""
+        if fam == "(по умолчанию)":
+            fam = ""
+        self.settings.set("cloud_font", size)
+        self.settings.set("cloud_opacity", opacity)
+        self.settings.set("cloud_font_name", fam)
+        self.stream_overlay.apply_style(
+            self.settings.get("cloud_bg", "#ececec"),
+            self.settings.get("cloud_fg", "#5c5c5c"),
+            size,
+            opacity,
+            fam)
+        self.stream_overlay.set_enabled(self.settings.get("cloud_enabled", True))
 
     def _paint_cube_logo(self, widget, event):
         p = QPainter(widget)
@@ -1043,13 +1398,26 @@ class MainWindow(QMainWindow):
             log("RECORD_START", f"mode={self.settings.get('mode')}")
             self.is_recording = True
             self._recording_start_time = time.monotonic()
+            self.phrase_stream.transcriber = self.transcriber
+            self.phrase_stream.start()
+            # доставка текста — ТОЛЬКО через сигнал (из фонового потока в окно напрямую нельзя!)
+            self.phrase_stream.on_phrase = lambda t, p=False: self.signals.stream_phrase.emit(t, p)
+            self._stream_epoch += 1
+            self._stream_committed = ""
+            self.stream_overlay.capture_anchor()   # облачко закрепляется у поля ввода
+            self.stream_overlay.set_send_visible(True)   # кнопка «Отправить» — на время диктовки
+            self.recorder.stream_hook = self.phrase_stream.feed
             self.recorder.start()
+            self._ignore_text = False   # новая диктовка — её текст вставлять можно
+            if self.settings.get("cloud_enabled", True):
+                self.waveform.hide_wave()   # волна живёт в облачке
+            else:
+                self.waveform.show_recording()
             self.signals.recording_started.emit()
-            self.waveform.show_recording()
             play_start_sound()
             self._recording_session = getattr(self, '_recording_session', 0) + 1
             session = self._recording_session
-            self._recording_timeout = QTimer.singleShot(60000, lambda s=session: self._on_recording_timeout(s))
+            self._recording_timeout = QTimer.singleShot(300000, lambda s=session: self._on_recording_timeout(s))
 
     def _on_recording_timeout(self, session):
         if session == getattr(self, '_recording_session', 0):
@@ -1058,29 +1426,172 @@ class MainWindow(QMainWindow):
     def _force_stop_recording(self):
         if self.is_recording:
             elapsed = time.monotonic() - getattr(self, '_recording_start_time', 0)
-            log("RECORD_TIMEOUT", f"60s limit reached (elapsed={elapsed:.1f}s)")
+            log("RECORD_TIMEOUT", f"300s limit reached (elapsed={elapsed:.1f}s)")
             self._recording_timeout = None
             self.stop_recording()
+
+    def _on_send_click(self):
+        """Кнопка «Отправить»: звук-подтверждение (как у режимов) и завершение диктовки."""
+        log("SEND_CLICK", "кнопка «Отправить»")
+        try:
+            import winsound
+            wav = os.path.join(get_base_dir(), "sounds", "ping.wav")
+            if os.path.exists(wav):
+                winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
+        except Exception:
+            pass
+        self.stop_recording()
 
     def stop_recording(self):
         if self.is_recording:
             if hasattr(self, '_recording_timeout') and self._recording_timeout:
                 self._recording_timeout.stop()
                 self._recording_timeout = None
+            self.recorder.stream_hook = None
             audio = self.recorder.stop()
+            self._stream_committed = ""
+            # облачко остаётся видимым — текст можно прочитать и проверить;
+            # исчезнет в момент отправки в поле ввода
             frames = len(audio) if len(audio) > 0 else 0
             duration = frames / 16000 if frames > 0 else 0
             log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
             self.is_recording = False
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
+            self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
+            self.stream_overlay.set_send_visible(False)  # диктовка завершена — кнопка не нужна
             play_stop_sound()
             self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
 
+    def _check_rmb_reset(self):
+        """Следит за облачком: таймер диктовки, крестик сброса, правая кнопка — сброс."""
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            # таймер диктовки и волна в облачке
+            if self.recorder.is_recording:
+                el = int(time.monotonic() - getattr(self, "_recording_start_time", time.monotonic()))
+                t = "%d:%02d" % (el // 60, el % 60)
+                if t != getattr(self, "_last_time_text", ""):
+                    self._last_time_text = t
+                    self.stream_overlay.set_time(t)
+                # волна слушает голос: речь — играет, тишина — гаснет
+                self.stream_overlay.set_wave_active(self.phrase_stream.is_speech)
+
+            # левая кнопка на крестике облачка — сброс; ловим даже короткие клики
+            # (0x0001 = «кнопка нажималась с прошлого опроса» — ничего не проскакивает)
+            st = user32.GetAsyncKeyState(0x01)
+            down = bool(st & 0x8000)
+            clicked = (down and not getattr(self, "_lmb_was_down", False)) or bool(st & 0x0001)
+            self._lmb_was_down = down
+            if clicked and self.stream_overlay.isVisible():
+                x, y = self._cursor_xy()
+                crect = self.stream_overlay.close_rect()
+                if crect and self._in_rect(x, y, crect):
+                    if self.recorder.is_recording:
+                        self._stream_reset()
+                    else:
+                        self.stream_overlay.hide()   # диктовки нет — просто закрываем
+
+            # правая кнопка мыши — сброс в любом месте
+            st2 = user32.GetAsyncKeyState(0x02)
+            down2 = bool(st2 & 0x8000)
+            clicked2 = (down2 and not self._rmb_was_down) or bool(st2 & 0x0001)
+            self._rmb_was_down = down2
+            if clicked2 and self.recorder.is_recording:
+                self._stream_reset()
+        except Exception as e:
+            log("CLICK_CHECK_ERROR", str(e))
+
+    def _cursor_xy(self):
+        import ctypes
+
+        class P(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+        p = P()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(p))
+        return p.x, p.y
+
+    @staticmethod
+    def _in_rect(x, y, r):
+        """Координата внутри прямоугольника (r = x, y, w, h)."""
+        rx, ry, rw, rh = r
+        return rx <= x <= rx + rw and ry <= y <= ry + rh
+
+    def _stream_reset(self):
+        """Сброс: полная остановка сессии — новая диктовка только по хоткею заново."""
+        log("STREAM_RESET", "сессия остановлена, ждём хоткей заново")
+        play_reset_sound()
+        self._stream_committed = ""
+        self.recorder.stream_hook = None
+        try:
+            self.recorder.stop()
+        except Exception:
+            pass
+        self.phrase_stream.reset()
+        self.phrase_stream.on_phrase = None   # запоздалые куски больше не перерисуют облачко
+        self._stream_epoch += 1
+        self.is_recording = False    # цикл закрыт: следующий хоткей сразу начнёт НОВУЮ диктовку
+        self.hold_mode = False
+        if hasattr(self, '_recording_timeout') and self._recording_timeout:
+            self._recording_timeout.stop()
+            self._recording_timeout = None
+        self._suppress_hotkey = False
+        self._last_time_text = ""
+        self._ignore_text = True   # запоздалый текст отменённой диктовки не вставляем
+        # буфер обмена не трогаем: он программе не нужен, а чужие картинки целы
+        self.stream_overlay.set_wave_active(False)   # отмена — волна замирает
+        self.stream_overlay.set_send_visible(False)
+        self.stream_overlay.flash_reset("Сброшено — жмите хоткей заново")
+        self.waveform.hide_wave()          # капсула индикации тоже гаснет
+        self.signals.recording_stopped.emit()
+
+    def _on_stream_phrase(self, text, partial=False):
+        """Живой текст: слова появляются по мере речи; на паузе — точная фраза."""
+        if partial:
+            shown = (self._stream_committed + " " + text).strip()
+        else:
+            self._stream_committed = (self._stream_committed + " " + text).strip()
+            if len(self._stream_committed) > 600:
+                self._stream_committed = self._stream_committed[-600:]
+            shown = self._stream_committed
+            # пауза — пересчитываем ВСЮ диктовку целиком (точно как уйдёт в поле)
+            QTimer.singleShot(350, self._refresh_session_text)
+        self.stream_overlay.show_text(shown)
+
+    def _refresh_session_text(self):
+        """Точный текст всей диктовки — тот же, что отправится в поле ввода."""
+        try:
+            if self._session_busy or not self.recorder.is_recording:
+                return
+            audio = self.recorder.get_audio()
+            if len(audio) < 8000:   # меньше полсекунды речи — нечего пересчитывать
+                return
+            self._session_busy = True
+            threading.Thread(target=self._session_asr, args=(audio, self._stream_epoch), daemon=True).start()
+        except Exception as e:
+            log("SESSION_REFRESH_ERROR", str(e))
+
+    def _session_asr(self, audio, epoch):
+        try:
+            text = (self.transcriber.transcribe(audio) or "").strip()
+            if text and epoch == getattr(self, "_stream_epoch", 0):
+                self.signals.session_text.emit(text)
+        except Exception as e:
+            log("SESSION_ASR_ERROR", str(e))
+        finally:
+            self._session_busy = False
+
+    def _on_session_text(self, text):
+        """Показываем точный текст — ровно тот, что уйдёт в поле ввода."""
+        self._stream_committed = text
+        self.stream_overlay.show_text(text)
+
     def transcribe_audio(self, audio):
         elapsed = time.monotonic() - getattr(self, '_recording_start_time', time.monotonic())
-        if elapsed > 65:
+        if elapsed > 305:   # лимит записи — 5 минут (300 с + запас)
             log("TRANSCRIBE_SKIP", f"stale audio from {elapsed:.1f}s ago")
             self.signals.transcribing_finished.emit()
             return
@@ -1102,15 +1613,14 @@ class MainWindow(QMainWindow):
 
     def on_text_ready(self, text):
         log("TEXT_READY", f"len={len(text)} text={repr(text[:60])}")
-        self._suppress_hotkey = True
-        try:
-            import pyperclip
-            pyperclip.copy(text)
-            log("CLIPBOARD_SET", "ok")
-            QTimer.singleShot(100, lambda: self._do_paste(text))
-        except Exception as e:
-            log("PASTE_ERROR", str(e))
+        if getattr(self, "_ignore_text", False):
+            self._ignore_text = False
             self._suppress_hotkey = False
+            log("TEXT_IGNORED", "диктовка была отменена — текст не вставляем")
+            return
+        self._suppress_hotkey = True
+        # буфер обмена НЕ трогаем — текст печатается символами, картинки в буфере целы
+        QTimer.singleShot(100, lambda: self._do_paste(text))
 
     def _do_paste(self, text):
         try:
@@ -1118,6 +1628,9 @@ class MainWindow(QMainWindow):
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
             log("DO_PASTE_DONE", "ok")
+            # текст отправлен — облачко можно убирать
+            self.stream_overlay.hide()
+            self.stream_overlay.clear_anchor()
         except Exception as e:
             log("PASTE_ERROR", str(e))
         finally:
@@ -1137,7 +1650,8 @@ class MainWindow(QMainWindow):
     def on_transcribing_started(self):
         self.is_transcribing = True
         self.tray.setIcon(self.create_mic_icon("#00f7ff"))
-        self.waveform.show_transcribing()
+        if not self.settings.get("cloud_enabled", True):
+            self.waveform.show_transcribing()   # в режиме облачка капсула не нужна
 
     def on_transcribing_finished(self):
         self.is_transcribing = False

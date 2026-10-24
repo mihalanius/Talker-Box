@@ -1,11 +1,11 @@
 @echo off
-cd /d "D:\OpenCode_Arhive\Talker Box"
+cd /d "%~dp0"
 
 echo === Talker Box Setup ===
 
 if not exist "venv" (
     echo Creating virtual environment...
-    python -m venv venv
+    "C:\Users\Glab\AppData\Local\Programs\Python\Python313\python.exe" -m venv venv
 )
 
 echo Installing dependencies...

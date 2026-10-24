@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Talker Box — Системные требования</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a1628;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 680px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 900;
+            color: #00ff88;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            margin-bottom: 8px;
+        }
+        .header .subtitle {
+            font-size: 14px;
+            color: #666;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .section {
+            background: rgba(22, 33, 62, 0.6);
+            border: 1px solid rgba(0, 255, 136, 0.15);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00ff88;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title .dot {
+            width: 8px;
+            height: 8px;
+            background: #00ff88;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #00ff88;
+        }
+        .section.recommended {
+            border-color: rgba(0, 247, 255, 0.15);
+        }
+        .section.recommended .section-title {
+            color: #00f7ff;
+        }
+        .section.recommended .dot {
+            background: #00f7ff;
+            box-shadow: 0 0 8px #00f7ff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        tr:not(:last-child) {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        td {
+            padding: 10px 0;
+            font-size: 14px;
+        }
+        td:first-child {
+            color: #888;
+            width: 140px;
+        }
+        td:last-child {
+            color: #ccc;
+        }
+        .notes {
+            background: rgba(22, 33, 62, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-top: 20px;
+        }
+        .notes-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #888;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .notes td:first-child {
+            color: #666;
+            width: 120px;
+        }
+        .notes td:last-child {
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Talker Box</h1>
+            <div class="subtitle">Системные требования</div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                <span class="dot"></span>
+                Минимальные
+            </div>
+            <table>
+                <tr><td>ОС</td><td>Windows 10 (64-bit)</td></tr>
+                <tr><td>Процессор</td><td>2 ядра, 1.5 GHz</td></tr>
+                <tr><td>ОЗУ</td><td>4 GB</td></tr>
+                <tr><td>Диск</td><td>500 MB свободного места</td></tr>
+                <tr><td>Микрофон</td><td>Любой (встроенный или USB)</td></tr>
+                <tr><td>Экран</td><td>1024×768</td></tr>
+            </table>
+        </div>
+
+        <div class="section recommended">
+            <div class="section-title">
+                <span class="dot"></span>
+                Рекомендуемые
+            </div>
+            <table>
+                <tr><td>ОС</td><td>Windows 11 (64-bit)</td></tr>
+                <tr><td>Процессор</td><td>4 ядра, 2.5 GHz+</td></tr>
+                <tr><td>ОЗУ</td><td>8 GB+</td></tr>
+                <tr><td>Диск</td><td>500 MB SSD</td></tr>
+                <tr><td>Микрофон</td><td>USB-микрофон или гарнитура</td></tr>
+                <tr><td>Экран</td><td>1920×1080</td></tr>
+            </table>
+        </div>
+
+        <div class="notes">
+            <div class="notes-title">Примечания</div>
+            <table>
+                <tr><td>Модель</td><td>GigaAM (220 МБ) загружается в ОЗУ при старте — потребление ~280–350 MB RAM</td></tr>
+                <tr><td>CPU</td><td>Распознавание голоса идёт на процессоре (GPU не требуется)</td></tr>
+                <tr><td>Интернет</td><td>Не нужен — вся обработка локальная</td></tr>
+                <tr><td>Антивирус</td><td>Может блокировать — добавьте папку программы в исключения</td></tr>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

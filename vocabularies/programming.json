@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "name": "Программирование",
+  "description": "IT-жаргон, Git-термины, сленг разработчиков",
+  "language": "ru",
+  "categories": {
+    "git": {
+      "name": "Git и контроль версий",
+      "icon": "🔀",
+      "words": {
+        "пул реквест": {"target": "pull request", "score": 3.0},
+        "пуши": {"target": "push", "score": 2.5},
+        "пушить": {"target": "push", "score": 2.5},
+        "запушить": {"target": "push", "score": 2.5},
+        "коммит": {"target": "commit", "score": 2.5},
+        "коммитить": {"target": "commit", "score": 2.5},
+        "закоммитить": {"target": "commit", "score": 2.5},
+        "мерж": {"target": "merge", "score": 2.5},
+        "мержить": {"target": "merge", "score": 2.5},
+        "бранч": {"target": "branch", "score": 2.5},
+        "репозиторий": {"target": "repository", "score": 2.0},
+        "репо": {"target": "repository", "score": 2.0},
+        "апрув": {"target": "approve", "score": 2.5},
+        "апрувить": {"target": "approve", "score": 2.5}
+      }
+    },
+    "development": {
+      "name": "Разработка",
+      "icon": "💻",
+      "words": {
+        "деплой": {"target": "deploy", "score": 2.5},
+        "деплоить": {"target": "deploy", "score": 2.5},
+        "задеплоить": {"target": "deploy", "score": 2.5},
+        "релиз": {"target": "release", "score": 2.5},
+        "зарелизить": {"target": "release", "score": 2.5},
+        "билд": {"target": "build", "score": 2.5},
+        "билдить": {"target": "build", "score": 2.5},
+        "дебаг": {"target": "debug", "score": 2.5},
+        "дебажить": {"target": "debug", "score": 2.5},
+        "фикс": {"target": "fix", "score": 2.5},
+        "фиксить": {"target": "fix", "score": 2.5},
+        "пофиксить": {"target": "fix", "score": 2.5},
+        "рефакторинг": {"target": "refactoring", "score": 2.0},
+        "фича": {"target": "feature", "score": 2.5},
+        "баг": {"target": "bug", "score": 2.5},
+        "таска": {"target": "task", "score": 2.5},
+        "костыль": {"target": "костыль", "score": 2.0},
+        "линтер": {"target": "linter", "score": 2.0},
+        "копипаста": {"target": "copy-paste", "score": 2.0},
+        "фреймворк": {"target": "framework", "score": 2.0},
+        "фронтенд": {"target": "frontend", "score": 2.0},
+        "бэкенд": {"target": "backend", "score": 2.0},
+        "фуллстек": {"target": "fullstack", "score": 2.0}
+      }
+    },
+    "communication": {
+      "name": "Общение",
+      "icon": "💬",
+      "words": {
+        "пинг": {"target": "ping", "score": 2.0},
+        "пингануть": {"target": "ping", "score": 2.0},
+        "аттач": {"target": "attach", "score": 2.0},
+        "аттачить": {"target": "attach", "score": 2.0},
+        "колл": {"target": "call", "score": 2.0},
+        "конфа": {"target": "конференция", "score": 2.0},
+        "фидбек": {"target": "feedback", "score": 2.0},
+        "дедлайн": {"target": "deadline", "score": 2.0}
+      }
+    },
+    "infrastructure": {
+      "name": "Инфраструктура",
+      "icon": "🖥",
+      "words": {
+        "локалка": {"target": "локальный сервер", "score": 2.0},
+        "продакшн": {"target": "production", "score": 2.5},
+        "сейвить": {"target": "save", "score": 2.0},
+        "уронить прод": {"target": "уронить продакшен", "score": 3.0},
+        "дамп": {"target": "dump", "score": 2.0},
+        "дрова": {"target": "драйверы", "score": 2.0},
+        "апишка": {"target": "API", "score": 2.5},
+        "либа": {"target": "библиотека", "score": 2.0},
+        "мускул": {"target": "MySQL", "score": 2.5},
+        "пыха": {"target": "PHP", "score": 2.5},
+        "пэхапэ": {"target": "PHP", "score": 2.5}
+      }
+    }
+  },
+  "settings": {
+    "default_score": 2.0,
+    "max_score": 5.0
+  }
+}

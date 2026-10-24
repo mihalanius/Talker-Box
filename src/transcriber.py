@@ -164,6 +164,11 @@ class Transcriber:
         try:
             audio_float = audio_data.astype(np.float32).flatten() / 32768.0
 
+            # тихую речь (далеко от микрофона) усиливаем — распознаётся заметно точнее
+            peak = float(np.abs(audio_float).max())
+            if 0 < peak < 0.5:
+                audio_float = audio_float * (0.5 / peak)
+
             if self.is_offline:
                 stream = self.recognizer.create_stream()
                 stream.accept_waveform(sample_rate, audio_float)

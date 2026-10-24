@@ -4,14 +4,11 @@
   "auto_send": true,
   "auto_start": true,
   "minimize_to_tray": true,
-  "active_model": "GigaAM v3 trans-punct (220 Mb)",
-  "models": [
-    {
-      "name": "GigaAM v3 trans-punct (220 Mb)",
-      "path": "D:/OpenCode_Arhive/Voice models/GigaAM v3 trans-punct (220 Mb)",
-      "type": "sherpa-onnx",
-      "language": "ru",
-      "size": ""
-    }
-  ]
+  "cloud_enabled": true,
+  "cloud_bg": "#ececec",
+  "cloud_fg": "#5c5c5c",
+  "cloud_font": 16,
+  "cloud_font_name": "Blogger Sans",
+  "cloud_opacity": 100,
+  "mic_device": ""
 }

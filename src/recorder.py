@@ -12,11 +12,19 @@ class Recorder:
         self.frames = []
         self.is_recording = False
         self.stream = None
+        self.device = None   # выбранный микрофон (None = системный по умолчанию)
 
     def callback(self, indata, frames, time, status):
         if status:
             log("RECORDER_STATUS", str(status))
         self.audio_queue.put(indata.copy())
+        # живое распознавание: копия кусочка уходит в сборщик фраз
+        hook = getattr(self, "stream_hook", None)
+        if hook:
+            try:
+                hook(indata.copy())
+            except Exception as e:
+                log("STREAM_HOOK_ERROR", str(e))
 
     def start(self):
         if self.stream:
@@ -37,6 +45,7 @@ class Recorder:
             samplerate=self.sample_rate,
             channels=self.channels,
             dtype='int16',
+            device=self.device,
             callback=self.callback
         )
         self.stream.start()
@@ -63,6 +72,8 @@ class Recorder:
             except queue.Empty:
                 break
         if items:
+            # важно: звук НЕ теряем — он идёт в общий буфер записи
+            self.frames.extend(items)
             audio = np.concatenate(items, axis=0)
             return float(np.abs(audio).mean()) / 32768.0
         return 0.0

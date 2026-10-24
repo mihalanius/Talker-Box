@@ -14,10 +14,17 @@ BUILTIN_MODEL = {
 
 DEFAULT_SETTINGS = {
     "hotkey": "ctrl+win",
-    "mode": "hold",
+    "mode": "toggle",
     "auto_send": True,
     "auto_start": True,
-    "minimize_to_tray": True
+    "minimize_to_tray": True,
+    "cloud_enabled": True,
+    "cloud_bg": "#ececec",
+    "cloud_fg": "#5c5c5c",
+    "cloud_font": 16,
+    "cloud_font_name": "",
+    "cloud_opacity": 100,
+    "mic_device": ""
 }
 
 class SettingsManager:
