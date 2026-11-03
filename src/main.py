@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
                               QLineEdit, QListWidget, QFrame, QSlider, QColorDialog,
-                              QScrollArea, QTextEdit)
+                              QScrollArea, QTextEdit, QSizePolicy)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics, QCursor, QRadialGradient
 from recorder import Recorder
@@ -836,6 +836,8 @@ class MainWindow(QMainWindow):
         self.dict_page = QWidget()
         self._build_dict_page()
         self.dict_scroll = self._scroll(self.dict_page)
+        # у страницы словаря своя прокрутка не нужна — листается только поле с текстом
+        self.dict_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content_lay.addWidget(self.dict_scroll)
         self.dict_scroll.hide()
 
@@ -863,22 +865,25 @@ class MainWindow(QMainWindow):
 
     def _build_dict_page(self):
         lay = QVBoxLayout(self.dict_page)
-        lay.setContentsMargins(16, 12, 16, 12)
-        lay.setSpacing(8)
+        # заголовок и подсказка — к самому верху, чтобы осталось больше места под текст
+        lay.setContentsMargins(16, 2, 16, 8)
+        lay.setSpacing(3)
         title = QLabel("Словарь")
         title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
         lay.addWidget(title)
         text = QLabel(
             "Формат строки: Правильное слово - неправильный1, неправильный2.\n"
-            "Строки с # — комментарии. Правки сохраняются сами, файл читается сразу.")
+            "Строки с # — комментарии. Правки сохраняются сами.")
         text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
         text.setWordWrap(True)
         lay.addWidget(text)
 
-        # живой редактор файла словаря: текст в поле, правки автосохраняются
+        # живой редактор файла словаря: тянется на всё свободное место,
+        # прокрутка — только внутри поля, у самой страницы скролла нет
         self.dict_edit = QTextEdit()
         self.dict_edit.setAcceptRichText(False)
-        self.dict_edit.setFixedHeight(168)   # высота фиксирована — длинное листается внутри
+        self.dict_edit.setMinimumHeight(60)
+        self.dict_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.dict_edit.setStyleSheet(
             "QTextEdit { background: #f7f7f5; color: #1c1c1c; border: 1px solid #dcdcd8;"
             " border-radius: 8px; padding: 6px; font: 11px 'Consolas'; }"
@@ -886,7 +891,7 @@ class MainWindow(QMainWindow):
             "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.dict_edit.textChanged.connect(self._on_dict_text_changed)
-        lay.addWidget(self.dict_edit)
+        lay.addWidget(self.dict_edit, 1)
 
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -899,7 +904,6 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(self._open_vocabulary_folder)
         row.addWidget(btn)
         lay.addLayout(row)
-        lay.addStretch()
 
     # ---------- словарь: чтение / автосохранение файла ----------
 
