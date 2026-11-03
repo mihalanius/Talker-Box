@@ -909,10 +909,10 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(self.dict_page)
         # контейнер как на вкладке «Главная»: бирка на рамке + светлый внутренний блок,
         # внутри — кнопка папки и текст словаря на всё оставшееся место
-        lay.setContentsMargins(0, 6, 0, 0)
+        lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        box = GroupBox("Словарь", active=False, inner=True, top_offset=0)
+        box = GroupBox("Словарь", active=False, inner=True)   # бирка «на линии» рамки
 
         # кнопка живёт своим слоем поверх контейнера (правый верхний угол)
         # и НЕ отнимает высоту у текста словаря
