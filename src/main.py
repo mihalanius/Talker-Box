@@ -157,9 +157,9 @@ class GroupBox(QWidget):
         (self._inner_lay if self._inner is not None else self._frame_lay).addWidget(widget, stretch)
 
     def set_corner_widget(self, widget):
-        """Виджет «поверх блока» в правом верхнем углу — не занимает место в раскладке."""
+        """Виджет «поверх блока» справа — на одном уровне с биркой, вне раскладки."""
         self._corner = widget
-        widget.setParent(self._frame)
+        widget.setParent(self)          # как и бирка — ребёнок самого блока, не рамки
         widget.setFixedHeight(24)
         widget.setStyleSheet(
             "QPushButton { background: #ffffff; color: #444; border: 1px solid #dcdcd8;"
@@ -172,12 +172,19 @@ class GroupBox(QWidget):
 
     def _place_corner(self):
         corner = getattr(self, "_corner", None)
-        if corner is None:
+        if corner is None or corner.height() <= 0:
             return
         try:
-            x = self._frame.width() - corner.width() - 18
-            corner.move(max(6, x), 2)
-            corner.raise_()      # всегда выше внутреннего блока
+            # по горизонтали — у правого края блока (как внутренний отступ рамки)
+            x = self.width() - corner.width() - 14
+            # по вертикали — ровно по центру бирки «Словарь» на верхней границе
+            tag = getattr(self, "_tag", None)
+            if tag is not None and tag.height() > 0:
+                y = tag.y() + tag.height() // 2 - corner.height() // 2
+            else:
+                y = 0
+            corner.move(max(6, x), max(0, y))
+            corner.raise_()      # выше рамки и внутреннего блока
         except Exception:
             pass
 
