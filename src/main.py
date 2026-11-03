@@ -639,10 +639,10 @@ class MainWindow(QMainWindow):
         self._stream_epoch = 0      # поколение сессии: гасит запоздалый текст после сброса
         self._pending_send = False  # облачко держит готовый текст: следующий хоткей его ОТПРАВИТ
         self._cloud_edited = False  # текст в облачке правили руками — финальный ASR его не затирает
-        # автоотправка: после остановки текст уходит сам, но любое действие с облачком её отменяет
-        self._autosend_timer = QTimer(self)
-        self._autosend_timer.setSingleShot(True)
-        self._autosend_timer.timeout.connect(self._autosend_fire)
+        # облачко трогали мышкой (выделяли слово/правили словарь) — тогда текст ждёт,
+        # иначе остановка отправляет его сразу, как раньше
+        self._cloud_touched = False
+        self._keep_for_edit = False
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -1704,7 +1704,6 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         if not self.is_recording:
-            self._autosend_cancel()   # новая диктовка — автоотправка прежнего текста не нужна
             if hasattr(self, '_recording_timeout') and self._recording_timeout:
                 self._recording_timeout.stop()
                 self._recording_timeout = None
@@ -1720,6 +1719,8 @@ class MainWindow(QMainWindow):
             self._stream_committed = ""
             self._pending_send = False
             self._cloud_edited = False
+            self._cloud_touched = False    # новая диктовка — облачко ещё не трогали
+            self._keep_for_edit = False
             self.stream_overlay.capture_anchor()   # облачко закрепляется у поля ввода
             self.stream_overlay.set_send_visible(True)   # кнопка «Отправить» — на время диктовки
             self._set_esc(True)    # Escape отменяет диктовку, как крестик
@@ -1772,27 +1773,12 @@ class MainWindow(QMainWindow):
         except Exception:
             return False
 
-    def _autosend_start(self, ms):
-        """Автоотправка: после остановки текст уходит сам через ms миллисекунд."""
+    def _cloud_mouse_selected(self):
+        """Выделен ли сейчас в облачке фрагмент текста мышкой."""
         try:
-            self._autosend_timer.start(int(ms))
+            return bool((self.stream_overlay.label.selectedText() or "").strip())
         except Exception:
-            pass
-
-    def _autosend_cancel(self):
-        """Пользователь работает с облачком — автоотправку отменяем, текст ждёт."""
-        try:
-            if self._autosend_timer.isActive():
-                log("AUTOSEND_CANCEL", "текст ждёт ручной отправки")
-            self._autosend_timer.stop()
-        except Exception:
-            pass
-
-    def _autosend_fire(self):
-        if not self._has_pending_text():
-            return
-        log("AUTOSEND", "текст отправлен автоматически после остановки")
-        self.send_pending()
+            return False
 
     def _set_esc(self, on):
         """Ловить Escape (отмена распознавания) — только пока идёт сессия."""
@@ -1804,7 +1790,6 @@ class MainWindow(QMainWindow):
 
     def cancel_session(self):
         """Escape или крестик: отменить диктовку либо убрать готовый текст из облачка."""
-        self._autosend_cancel()
         if self.is_recording or getattr(self.recorder, "is_recording", False):
             log("CANCEL", "отмена диктовки (Escape/крестик)")
             self._stream_reset()
@@ -1829,7 +1814,6 @@ class MainWindow(QMainWindow):
             text = ""
         text = text or (self._stream_committed or "").strip()
         self._pending_send = False
-        self._autosend_cancel()
         if not text:
             log("SEND_PENDING", "пусто — нечего отправлять")
             self.stream_overlay.hide()
@@ -1902,7 +1886,7 @@ class MainWindow(QMainWindow):
         wrong = (selected or "").strip()
         if not wrong:
             return
-        self._autosend_cancel()   # пользователь правит словарь — текст не отправляем сам
+        self._cloud_touched = True   # правим словарь — текст ждёт
         from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton
         from vocabulary.manager import VocabularyManager
 
@@ -1971,18 +1955,19 @@ class MainWindow(QMainWindow):
                 self._recording_timeout = None
             self.recorder.stream_hook = None
             audio = self.recorder.stop()
-            # облачко остаётся видимым с полным текстом: его можно долго читать,
-            # править (в т.ч. словарём) и отправить следующим нажатием хоткея
             frames = len(audio) if len(audio) > 0 else 0
             duration = frames / 16000 if frames > 0 else 0
             log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
             self.is_recording = False
-            self._pending_send = True    # текст ждёт отправки, хоткей больше не начнёт запись
-            self._autosend_start(8000)   # страховка: если ASR сильно задержится — отправим живой текст
+            # трогали облачко мышкой (выделяли слово / правили словарь) — текст
+            # остаётся для правок; не трогали — отправим сразу, как раньше
+            self._keep_for_edit = bool(self._cloud_touched or self._cloud_mouse_selected())
+            log("STOP_KEEP", f"keep={self._keep_for_edit} touched={self._cloud_touched}")
+            self._pending_send = self._keep_for_edit
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
-            self.stream_overlay.set_send_visible(True)   # «Отправить» остаётся — текст ждёт
+            self.stream_overlay.set_send_visible(self._keep_for_edit)
             play_stop_sound()
             self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
@@ -2011,18 +1996,33 @@ class MainWindow(QMainWindow):
             self._lmb_was_down = down
             if clicked and self.stream_overlay.isVisible():
                 x, y = self._cursor_xy()
-                # клик по самому облачку — пользователь с ним работает, автоотправку отменяем
+                # клик по облачку = пользователь с ним работает (выделяет слово,
+                # открывает меню словаря) — после остановки текст будет ждать правок
                 try:
                     dpr = self.stream_overlay.devicePixelRatioF() or 1.0
                     g = self.stream_overlay.geometry()
                     lx, ly = x / dpr, y / dpr
                     if g.left() <= lx <= g.right() and g.top() <= ly <= g.bottom():
-                        self._autosend_cancel()
+                        if not self._cloud_touched:
+                            log("CLOUD_TOUCHED", "клик по облачку — текст будет ждать правок")
+                        self._cloud_touched = True
                 except Exception:
                     pass
                 crect = self.stream_overlay.close_rect()
                 if crect and self._in_rect(x, y, crect):
                     self.cancel_session()   # крестик = то же, что Escape
+
+            # правая кнопка по облачку — меню словаря (тоже «трогали мышкой»)
+            if user32.GetAsyncKeyState(0x02) & 0x8001 and self.stream_overlay.isVisible():
+                x, y = self._cursor_xy()
+                try:
+                    dpr = self.stream_overlay.devicePixelRatioF() or 1.0
+                    g = self.stream_overlay.geometry()
+                    lx, ly = x / dpr, y / dpr
+                    if g.left() <= lx <= g.right() and g.top() <= ly <= g.bottom():
+                        self._cloud_touched = True
+                except Exception:
+                    pass
 
         except Exception as e:
             log("CLICK_CHECK_ERROR", str(e))
@@ -2154,7 +2154,6 @@ class MainWindow(QMainWindow):
         self._ignore_text = True   # запоздалый текст отменённой диктовки не вставляем
         self._pending_send = False
         self._cloud_edited = False
-        self._autosend_cancel()
         self._set_esc(False)
         # буфер обмена не трогаем: он программе не нужен, а чужие картинки целы
         self.stream_overlay.set_wave_active(False)   # отмена — волна замирает
@@ -2244,27 +2243,27 @@ class MainWindow(QMainWindow):
             self._suppress_hotkey = False
             log("TEXT_IGNORED", "диктовка была отменена — текст не вставляем")
             return
-        if not self._pending_send:
-            log("TEXT_DROPPED", "сессия уже отправлена/закрыта — текст не вставляем")
-            return
         cloud_on = (getattr(self.stream_overlay, "_enabled", True)
                     and self.stream_overlay.isVisible())
-        if not cloud_on:
-            # режим без облачка — привычная вставка сразу после остановки
-            log("TEXT_PASTE_DIRECT", "облачко выключено — вставляем сразу")
+        if not (self._keep_for_edit and cloud_on):
+            # облачко не трогали мышкой (или оно выключено) — вставляем сразу,
+            # без пауз, как в старой версии
+            log("TEXT_PASTE_DIRECT", "текст не ждём — вставляем сразу после остановки")
             self._pending_send = False
             self._suppress_hotkey = True
             QTimer.singleShot(100, lambda: self._do_paste(text))
             return
+        if not self._pending_send:
+            log("TEXT_DROPPED", "сессия уже отправлена/закрыта — текст не вставляем")
+            return
         if self._cloud_edited and self._stream_committed:
             log("TEXT_KEPT_EDITED", "в облачке правки — финальный текст не перезаписываем")
             return
-        # финальный точный текст — в облачко; в поле он уйдёт по следующему нажатию хоткея
+        # текст ждёт правок: показываем финальный вариант, отправится по хоткею
         self._stream_committed = text
         self.stream_overlay.show_text(text)
         self.stream_overlay.set_send_visible(True)
         self._set_esc(True)    # пока текст в облачке, Escape его убирает
-        self._autosend_start(1200)   # финальный текст готов — через секунду отправим сами
 
     def _do_paste(self, text):
         try:
