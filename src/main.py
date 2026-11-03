@@ -1752,9 +1752,7 @@ class MainWindow(QMainWindow):
             self.send_pending()        # текст уже готов — отправить его
 
     def _has_pending_text(self):
-        """В облачке лежит готовый текст, ждущий отправки?"""
-        if not self._pending_send:
-            return False
+        """В облачке лежит текст, который можно отправить (не важно, pending он или нет)."""
         try:
             if not self.stream_overlay.isVisible():
                 return False
@@ -1940,20 +1938,68 @@ class MainWindow(QMainWindow):
             return 0
 
     def _focus_target(self):
-        """Вернуть фокус в окно назначения: облачко могло забрать его при выделении."""
+        """Вернуть фокус в окно назначения. True — окно активно и можно печатать.
+
+        Облачко и его кнопка — отдельные окна: после клика по ним фокус остаётся
+        у нас, и символы SendInput уходят «в никуда». Поэтому окно назначения
+        поднимаем через AttachThreadInput (обход системного запрета на смену
+        активного окна) и возвращаем фокус тому же элементу внутри него.
+        """
         try:
             import ctypes
+            from ctypes import wintypes
+
+            class _RECT(ctypes.Structure):
+                _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                            ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+            class _GTI(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+                    ("hwndActive", wintypes.HWND), ("hwndFocus", wintypes.HWND),
+                    ("hwndCapture", wintypes.HWND), ("hwndMenuOwner", wintypes.HWND),
+                    ("hwndMoveSize", wintypes.HWND), ("hwndCaret", wintypes.HWND),
+                    ("rcCaret", _RECT),
+                ]
+
             user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
             hwnd = getattr(self, "_target_hwnd", 0)
             if not hwnd or not user32.IsWindow(hwnd):
-                return
-            if user32.GetForegroundWindow() != hwnd:
-                # ход с Alt: разрешает системе передать фокус другому окну
+                log("FOCUS_FAIL", f"окно назначения не найдено hwnd={hwnd}")
+                return False
+            if user32.GetForegroundWindow() == hwnd:
+                return True
+
+            my_tid = kernel32.GetCurrentThreadId()
+            tgt_tid = user32.GetWindowThreadProcessId(hwnd, None)
+            attached = False
+            try:
+                if tgt_tid and tgt_tid != my_tid:
+                    attached = bool(user32.AttachThreadInput(my_tid, tgt_tid, True))
+                # Alt — снимает системный запрет на смену активного окна
                 user32.keybd_event(0x12, 0, 0, 0)
                 user32.keybd_event(0x12, 0, 2, 0)
+                user32.BringWindowToTop(hwnd)
                 user32.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
+                user32.SetActiveWindow(hwnd)
+                # фокус — тому же элементу внутри окна (поле ввода)
+                gti = _GTI()
+                gti.cbSize = ctypes.sizeof(_GTI)
+                if user32.GetGUIThreadInfo(tgt_tid, ctypes.byref(gti)) and gti.hwndFocus:
+                    if user32.IsWindow(gti.hwndFocus):
+                        user32.SetFocus(gti.hwndFocus)
+            finally:
+                if attached:
+                    user32.AttachThreadInput(my_tid, tgt_tid, False)
+
+            fg = user32.GetForegroundWindow()
+            ok = (fg == hwnd) or (user32.GetAncestor(fg, 2) == hwnd)   # GA_ROOT = 2
+            log("FOCUS_TARGET", f"hwnd={hwnd} fg={fg} ok={ok}")
+            return ok
+        except Exception as e:
+            log("FOCUS_ERROR", str(e))
+            return False
 
     def _stream_reset(self):
         """Сброс: полная остановка сессии — новая диктовка только по хоткею заново."""
@@ -2089,7 +2135,16 @@ class MainWindow(QMainWindow):
     def _do_paste(self, text):
         try:
             log("DO_PASTE", f"auto_send={self.settings.get('auto_send')}")
-            self._focus_target()   # фокус — в окно назначения (облако могло его забрать)
+            if not self._focus_target():
+                # фокус не вернулся — печатать некуда: текст остаётся в облачке
+                log("PASTE_NO_TARGET", "фокус не вернулся — текст оставлен в облачке")
+                self._pending_send = True
+                try:
+                    self.stream_overlay.set_time("нет окна")
+                except Exception:
+                    pass
+                return
+            time.sleep(0.12)   # окну нужно мгновение, чтобы стать активным
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
             log("DO_PASTE_DONE", "ok")
