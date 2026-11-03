@@ -537,7 +537,7 @@ def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
             push(0, u, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)
 
     # шлём пачками — быстро и без «заеданий»
-    batch = 64
+    batch = 128
     for i in range(0, len(inputs), batch):
         chunk = inputs[i:i + batch]
         arr = (INPUT * len(chunk))(*chunk)
@@ -548,10 +548,10 @@ def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
             for one in chunk[sent or 0:]:
                 user32.SendInput(1, ctypes.byref(one), ctypes.sizeof(INPUT))
                 time.sleep(0.003)
-        time.sleep(0.01)
+        time.sleep(0.004)
 
     if auto_send:
-        time.sleep(0.15)
+        time.sleep(0.08)
         send_key(VK_RETURN)
         time.sleep(0.03)
         send_key(VK_RETURN, KEYEVENTF_KEYUP)
@@ -2070,6 +2070,16 @@ class MainWindow(QMainWindow):
             self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
             self.stream_overlay.set_send_visible(False)
             play_stop_sound()
+            # БЫСТРАЯ ОТПРАВКА: печатаем то, что уже видно в облачке, не дожидаясь
+            # повторного распознавания всей записи (на 2 минутах это экономит секунды)
+            live = (self._stream_committed or "").strip()
+            if live:
+                self._suppress_hotkey = True
+                log("SEND_FAST", f"len={len(live)} — вставляем текст из облачка")
+                QTimer.singleShot(60, lambda t=live: self._do_paste(t))
+                self.signals.transcribing_finished.emit()   # иконка в трее возвращается сразу
+                return
+            # пустое облачко — обычный путь через полное распознавание
             self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
 
@@ -2354,7 +2364,7 @@ class MainWindow(QMainWindow):
         log("TEXT_PASTE_DIRECT", "вставляем сразу после остановки")
         self._pending_send = False
         self._suppress_hotkey = True
-        QTimer.singleShot(100, lambda: self._do_paste(text))
+        QTimer.singleShot(60, lambda: self._do_paste(text))
 
     def _do_paste(self, text):
         try:
@@ -2372,7 +2382,7 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 return
-            time.sleep(0.12)   # окну нужно мгновение, чтобы стать активным
+            time.sleep(0.08)   # окну нужно мгновение, чтобы стать активным
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
             log("DO_PASTE_DONE", "ok")
