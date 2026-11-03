@@ -800,7 +800,7 @@ class MainWindow(QMainWindow):
 
         # ===== Вкладки: Главная / Настройки / Словарь / История / О программе =====
         tabs = QHBoxLayout()
-        tabs.setSpacing(6)
+        tabs.setSpacing(10)   # зазор между вкладками, чтобы не наезжали друг на друга
         self.btn_tab_main = TabButton("Главная")
         self.btn_tab_set = TabButton("Настройки")
         self.btn_tab_dict = TabButton("Словарь")
@@ -815,7 +815,7 @@ class MainWindow(QMainWindow):
                   self.btn_tab_hist, self.btn_tab_help):
             tabs.addWidget(b)
         tabs.addStretch()
-        tabs.setContentsMargins(18, 0, 0, 0)
+        tabs.setContentsMargins(3, 0, 0, 0)   # блок вкладок сдвинут влево на 15 px
         header.addLayout(tabs)   # вкладки в одной строке с названием, сразу за ним
         win_btns = QHBoxLayout()
         win_btns.setSpacing(4)
@@ -882,6 +882,8 @@ class MainWindow(QMainWindow):
         self.dict_page = QWidget()
         self._build_dict_page()
         self.dict_scroll = self._scroll(self.dict_page)
+        # фон страницы словаря = фону окна: серая полоса вокруг блока не выделяется
+        self.dict_page.setStyleSheet("background: #d9d9d6;")
         # у страницы словаря своя прокрутка не нужна — листается только поле с текстом
         self.dict_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content_lay.addWidget(self.dict_scroll)
@@ -979,6 +981,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             log("DICT_LOAD_ERROR", str(e))
         try:
+            if self.dict_edit.toPlainText() == txt:
+                self.dict_status.setText("%s · %d строк" % (os.path.basename(path), len(txt.splitlines())))
+                return
             self._dict_loading = True
             self.dict_edit.setPlainText(txt)
             self._dict_loading = False
@@ -1064,30 +1069,20 @@ class MainWindow(QMainWindow):
             sc.setVisible(key == which)
         for key, b in buttons.items():
             b.setChecked(key == which)
-        # у «Словаря» контейнер занимает всю вкладку: внешние отступы убираем,
-        # чтобы поля вокруг блока были как внутри (14 px), а не двойные
+        # отступы применяем ТОЛЬКО при реальном изменении: переустановка отступов
+        # и стилей заставляет Qt заново пересчитывать дерево и тормозит переключение
+        layout = {"dict": ((0, 0, 0, 0), (18, 16, 18, 16), 7),
+                  "other": ((16, 20, 16, 16), (18, 16, 18, 16), 15)}[
+                      "dict" if which == "dict" else "other"]
+        margins, root_margins, top_gap = layout
         try:
-            if which == "dict":
-                self.content_lay.setContentsMargins(0, 0, 0, 0)
-                # фон страницы = фону окна: полоска над контейнером не выделяется
-                try:
-                    self.content.setStyleSheet("#content { background: #d9d9d6; border-radius: 12px; }")
-                except Exception:
-                    pass
+            if getattr(self, "_applied_layout", None) != layout:
+                self._applied_layout = layout
+                self.content_lay.setContentsMargins(*margins)
                 if getattr(self, "_root_lay", None) is not None:
-                    self._root_lay.setContentsMargins(18, 16, 18, 16)   # отступ контейнера снизу 16 px
+                    self._root_lay.setContentsMargins(*root_margins)
                 if getattr(self, "_top_gap", None) is not None:
-                    self._top_gap.setFixedHeight(7)    # на 8 px выше, полоска под вкладками уже
-            else:
-                self.content_lay.setContentsMargins(16, 20, 16, 16)
-                try:
-                    self.content.setStyleSheet("#content { background: #cfcfcc; border-radius: 12px; }")
-                except Exception:
-                    pass
-                if getattr(self, "_root_lay", None) is not None:
-                    self._root_lay.setContentsMargins(18, 16, 18, 16)
-                if getattr(self, "_top_gap", None) is not None:
-                    self._top_gap.setFixedHeight(15)
+                    self._top_gap.setFixedHeight(top_gap)
         except Exception:
             pass
         if which == "dict" and hasattr(self, "dict_edit"):
