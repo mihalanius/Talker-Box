@@ -117,12 +117,13 @@ class GroupTag(QLabel):
 class GroupBox(QWidget):
     """Блок с биркой на верхней границе — как .group-box в dashboard_v3."""
 
-    def __init__(self, title, content=None, active=False, inner=True):
+    def __init__(self, title, content=None, active=False, inner=True, top_offset=9):
         super().__init__()
         self._title = title
         self.setStyleSheet("background: transparent;")
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 9, 0, 0)
+        # top_offset — полоска над рамкой под бирку; 0 = рамка начинается сразу сверху
+        outer.setContentsMargins(0, top_offset, 0, 0)
         outer.setSpacing(0)
         self._frame = QWidget()
         self._frame.setObjectName("gbframe")
@@ -911,7 +912,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(0, 6, 0, 0)
         lay.setSpacing(0)
 
-        box = GroupBox("Словарь", active=False, inner=True)
+        box = GroupBox("Словарь", active=False, inner=True, top_offset=0)
 
         # кнопка живёт своим слоем поверх контейнера (правый верхний угол)
         # и НЕ отнимает высоту у текста словаря
