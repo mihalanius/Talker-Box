@@ -156,6 +156,35 @@ class GroupBox(QWidget):
         """Добавить виджет в блок (с растяжением — чтобы занимал свободное место)."""
         (self._inner_lay if self._inner is not None else self._frame_lay).addWidget(widget, stretch)
 
+    def set_corner_widget(self, widget):
+        """Виджет «поверх блока» в правом верхнем углу — не занимает место в раскладке."""
+        self._corner = widget
+        widget.setParent(self._frame)
+        widget.setFixedHeight(24)
+        widget.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #444; border: 1px solid #dcdcd8;"
+            " border-radius: 8px; padding: 4px 10px; font-size: 11px; }"
+            "QPushButton:hover { background: #f2f2f0; color: #1c1c1c; }")
+        widget.adjustSize()      # ширина по тексту, иначе кнопка растянется на весь блок
+        widget.setFixedHeight(24)
+        widget.show()
+        self._place_corner()
+
+    def _place_corner(self):
+        corner = getattr(self, "_corner", None)
+        if corner is None:
+            return
+        try:
+            x = self._frame.width() - corner.width() - 18
+            corner.move(max(6, x), 2)
+            corner.raise_()      # всегда выше внутреннего блока
+        except Exception:
+            pass
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_corner()
+
     def set_active(self, active):
         self._active = bool(active)
         border = "#00914a" if active else "#dcdcd8"
@@ -877,17 +906,12 @@ class MainWindow(QMainWindow):
 
         box = GroupBox("Словарь", active=False, inner=True)
 
-        top = QWidget()
-        top.setStyleSheet("background: transparent;")
-        top_lay = QHBoxLayout(top)
-        top_lay.setContentsMargins(0, 0, 0, 6)
-        top_lay.setSpacing(8)
-        top_lay.addStretch(1)
+        # кнопка живёт своим слоем поверх контейнера (правый верхний угол)
+        # и НЕ отнимает высоту у текста словаря
         btn = QPushButton("Открыть папку словаря")
         btn.setFixedHeight(24)
         btn.clicked.connect(self._open_vocabulary_folder)
-        top_lay.addWidget(btn)
-        box.add(top)
+        box.set_corner_widget(btn)
 
         # живой редактор файла словаря: тянется на всё свободное место,
         # прокрутка — только внутри поля, у самой страницы скролла нет
