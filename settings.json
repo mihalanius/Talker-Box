@@ -6,7 +6,7 @@
   "minimize_to_tray": true,
   "cloud_enabled": true,
   "cloud_bg": "#ececec",
-  "cloud_fg": "#5c5c5c",
+  "cloud_fg": "#ff0000",
   "cloud_font": 16,
   "cloud_font_name": "Blogger Sans",
   "cloud_opacity": 100,

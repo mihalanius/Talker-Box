@@ -2,6 +2,8 @@ import os
 import json
 import numpy as np
 from paths import get_exe_dir
+from vocabulary.manager import VocabularyManager
+from vocabulary.post_processor import PostProcessor
 
 
 def _resolve_model_path(path):
@@ -23,6 +25,8 @@ class Transcriber:
         self.recognizer = None
         self.model_type = None
         self.is_offline = False
+        self.vocabulary = VocabularyManager()              # пользовательский словарь
+        self.post_processor = PostProcessor(self.vocabulary)  # исправление слов после распознавания
         if model_config:
             self.load_model(model_config)
 
@@ -32,6 +36,27 @@ class Transcriber:
 
         if self.model_type == "sherpa-onnx":
             self._load_sherpa_onnx(config)
+
+    def _vocabulary_params(self):
+        """Буст слов в модели (только если явно включён в настройках)."""
+        try:
+            if not self.vocabulary.boost_enabled:
+                return {}   # по умолчанию лечим словами-заменами — надёжнее
+            path = self.vocabulary.build_hotwords_file()
+            if not path or not os.path.exists(path) or os.path.getsize(path) == 0:
+                return {}
+            return {
+                "decoding_method": "modified_beam_search",
+                "hotwords_file": path,
+                "hotwords_score": self.vocabulary.hotwords_score,
+            }
+        except Exception:
+            return {}
+
+    def reload_vocabulary(self):
+        """Словарь изменился — пересоздать распознаватель с новым бустом."""
+        if self.model_config:
+            self.load_model(self.model_config)
 
     def _load_sherpa_onnx(self, config):
         try:
@@ -88,21 +113,25 @@ class Transcriber:
                     joiner_file = os.path.join(model_path, f)
 
             if encoder_file and decoder_file and joiner_file:
-                try:
-                    self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                        encoder=encoder_file,
-                        decoder=decoder_file,
-                        joiner=joiner_file,
-                        tokens=tokens_file,
-                        model_type="nemo_transducer",
-                        feature_dim=64,
-                        num_threads=4,
-                    )
-                    self.is_offline = True
-                    print(f"Loaded Transducer (NeMo) model: {config['name']}")
-                    return
-                except Exception:
-                    pass
+                # сначала пробуем с бустом словаря, при неудаче — обычное распознавание
+                for extra in (self._vocabulary_params(), {}):
+                    try:
+                        self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+                            encoder=encoder_file,
+                            decoder=decoder_file,
+                            joiner=joiner_file,
+                            tokens=tokens_file,
+                            model_type="nemo_transducer",
+                            feature_dim=64,
+                            num_threads=4,
+                            **extra,
+                        )
+                        self.is_offline = True
+                        note = " + словарь" if extra else ""
+                        print(f"Loaded Transducer (NeMo) model{note}: {config['name']}")
+                        return
+                    except Exception:
+                        continue
 
                 self.recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
                     encoder=encoder_file,
@@ -152,6 +181,12 @@ class Transcriber:
         while text.endswith("}") or text.endswith("]"):
             text = text[:-1]
         text = text.strip()
+
+        # слова из пользовательского словаря: «Гид» → «Git», «тикер» → «спикер»
+        try:
+            text = self.post_processor.process(text)
+        except Exception:
+            pass
 
         if text and not text.startswith("[") and text[-1] not in ".!?":
             text += "."

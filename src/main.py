@@ -5,9 +5,10 @@ import threading
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
-                              QLineEdit, QListWidget, QFrame, QSlider, QColorDialog)
+                              QLineEdit, QListWidget, QFrame, QSlider, QColorDialog,
+                              QScrollArea)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics, QCursor, QRadialGradient
 from recorder import Recorder
 from transcriber import Transcriber
 from stream_recognizer import PhraseStream
@@ -19,6 +20,145 @@ from hotkey_hook import HotkeyListener, start_capture
 from sounds import play_start_sound, play_stop_sound, play_hover_sound, play_reset_sound
 from logger import log
 from paths import get_base_dir, get_exe_dir
+
+
+class TabButton(QPushButton):
+    """Вкладка как в макете dashboard_v3: активная — светлая с тонкой рамкой и зелёной точкой."""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(28)
+        self.setStyleSheet("""
+            QPushButton {
+                background: transparent; color: #777; border: 1px solid transparent;
+                border-radius: 8px; padding: 4px 12px; font-size: 11px;
+            }
+            QPushButton:hover { background: #dedede; color: #000; }
+            QPushButton:checked {
+                background: #ededea; color: #000; font-weight: bold;
+                border: 1px solid #dcdcd8; padding-left: 27px;
+            }
+        """)
+        f = QFont(self.font())
+        f.setPixelSize(11)
+        f.setBold(True)
+        self._tw = QFontMetrics(f).horizontalAdvance(text)
+        self.setFixedWidth(self._tw + 7 + 8 + 2 * 14 + 2)   # точка + отступ + текст + поля по бокам
+
+    def _text_w(self):
+        f = QFont(self.font())
+        f.setPixelSize(11)
+        f.setBold(True)
+        return QFontMetrics(f).horizontalAdvance(self.text())
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if self.isChecked():
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor("#00c25a"))
+            cx = self.width() / 2 - self._text_w() / 2 - 4   # текст сдвинут на 7.5 px вправо — точка и текст по центру кнопки
+            p.drawEllipse(QPointF(cx, self.height() / 2 + 1), 3.5, 3.5)
+            p.end()
+
+
+class GroupTag(QLabel):
+    """Бирка блока: светодиод рисуется отдельно — по центру левого отступа.
+
+    В макете v3 точка задана как ::before у подписи. Если оставить её
+    символом в тексте, она садится на базовую линию и «пляшет».
+    Здесь точка рисуется по вертикальному центру бирки, а по горизонтали —
+    ровно посередине между рамкой бирки и первой буквой текста.
+    """
+
+    DOT = 7          # диаметр светодиода
+    PAD_LEFT = 10    # от рамки бирки до светодиода
+    GAP = 6          # от светодиода до первой буквы
+    PAD_RIGHT = 10
+    PAD_V = 2
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._active = False
+
+    def set_tag(self, active, text):
+        self._active = bool(active)
+        left = self.PAD_LEFT + self.DOT + self.GAP if self._active else self.PAD_LEFT
+        f = QFont(self.font())
+        f.setPixelSize(11)
+        f.setBold(self._active)
+        self.setFont(f)
+        self.setText(text)
+        self.setStyleSheet(
+            "QLabel { background: #e2e2df; color: #000; border: 1px solid "
+            f"{'#00914a' if self._active else '#d6d6d2'}; border-radius: 4px;"
+            f" padding: {self.PAD_V}px {self.PAD_RIGHT}px {self.PAD_V}px {left}px;"
+            " font-size: 11px; }")
+        self.adjustSize()
+
+    def paintEvent(self, e):
+        super().paintEvent(e)
+        if not self._active:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#00c25a"))
+        # 1 px рамки + отступ + половина диаметра = центр левого промежутка
+        cx = 1 + self.PAD_LEFT + self.DOT / 2.0
+        cy = self.height() / 2.0
+        p.drawEllipse(QPointF(cx, cy), self.DOT / 2.0, self.DOT / 2.0)
+        p.end()
+
+
+class GroupBox(QWidget):
+    """Блок с биркой на верхней границе — как .group-box в dashboard_v3."""
+
+    def __init__(self, title, content=None, active=False, inner=True):
+        super().__init__()
+        self._title = title
+        self.setStyleSheet("background: transparent;")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 9, 0, 0)
+        outer.setSpacing(0)
+        self._frame = QWidget()
+        self._frame.setObjectName("gbframe")
+        self._frame_lay = QVBoxLayout(self._frame)
+        self._frame_lay.setContentsMargins(14, 14, 14, 14)
+        self._frame_lay.setSpacing(0)
+        # inner=False — содержимое кладётся прямо в блок (как «Настройки» в макете)
+        self._inner = None
+        self._inner_lay = None
+        if inner:
+            self._inner = QWidget()
+            self._inner.setObjectName("gbinner")
+            self._inner.setStyleSheet("#gbinner { background: #f7f7f5; border: 1px solid #e2e2df; border-radius: 8px; }")
+            self._inner_lay = QVBoxLayout(self._inner)
+            self._inner_lay.setContentsMargins(12, 14, 12, 14)
+            self._inner_lay.setSpacing(0)
+            self._frame_lay.addWidget(self._inner)
+        else:
+            self._frame_lay.setContentsMargins(16, 22, 16, 10)
+        outer.addWidget(self._frame)
+        self._tag = GroupTag(self)
+        self._tag.move(12, 0)
+        self.set_active(active)
+        if content is not None:
+            self.set_content(content)
+
+    def set_content(self, content):
+        (self._inner_lay if self._inner is not None else self._frame_lay).addWidget(content)
+
+    def set_active(self, active):
+        self._active = bool(active)
+        border = "#00914a" if active else "#dcdcd8"
+        self._frame.setStyleSheet(
+            f"#gbframe {{ background: #ebebe8; border: 1px solid {border}; border-radius: 10px; }}")
+        self._tag.set_tag(self._active, self._title)
+        self._tag.raise_()
 
 
 class NeonFrame(QFrame):
@@ -210,6 +350,46 @@ class NeonCheckBox(QWidget):
         self.toggled.emit(self._checked)
 
 
+class ToggleSwitch(QWidget):
+    """Тумблер как в макете dashboard_v3: 36×20, светлый, без свечения."""
+
+    toggled = pyqtSignal(bool)
+
+    W, H = 36, 20
+
+    def __init__(self, checked=False, parent=None):
+        super().__init__(parent)
+        self._checked = bool(checked)
+        self.setFixedSize(self.W, self.H)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, checked):
+        checked = bool(checked)
+        if checked != self._checked:
+            self._checked = checked
+            self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#c6c6c2" if self._checked else "#cccccc"))
+        p.drawRoundedRect(0, 0, self.W, self.H, self.H / 2, self.H / 2)
+        p.setBrush(QColor("#ffffff"))
+        p.setPen(QPen(QColor(0, 0, 0, 45), 1))
+        x = self.W - 2 - 16 if self._checked else 2
+        p.drawEllipse(x, 2, 16, 16)
+        p.end()
+
+    def mousePressEvent(self, event):
+        self._checked = not self._checked
+        self.update()
+        self.toggled.emit(self._checked)
+
+
 class TaperedBar(QLabel):
     def __init__(self, parent=None, color="#333", height=5):
         super().__init__(parent)
@@ -361,7 +541,13 @@ def _paste_via_sendinput(text, auto_send=False, is_terminal=False):
     for i in range(0, len(inputs), batch):
         chunk = inputs[i:i + batch]
         arr = (INPUT * len(chunk))(*chunk)
-        user32.SendInput(len(chunk), arr, ctypes.sizeof(INPUT))
+        sent = user32.SendInput(len(chunk), arr, ctypes.sizeof(INPUT))
+        if sent != len(chunk):
+            # очередь ввода переполнилась — добиваем остаток по одному,
+            # иначе длинный текст вставляется частично
+            for one in chunk[sent or 0:]:
+                user32.SendInput(1, ctypes.byref(one), ctypes.sizeof(INPUT))
+                time.sleep(0.003)
         time.sleep(0.01)
 
     if auto_send:
@@ -426,6 +612,14 @@ class MainWindow(QMainWindow):
         self.phrase_stream = PhraseStream(None, lambda t, p=False: self.signals.stream_phrase.emit(t, p))
         self.stream_overlay = StreamOverlay()
         self.stream_overlay.send_button.clicked.connect(self._on_send_click)   # «Отправить» = второй жм хоткея
+        self.stream_overlay.add_word_requested.connect(self._on_add_word_request)   # ПКМ → словарь
+        # стиль облачка из настроек — сразу при старте (таймер и «Отправить» считаются от шрифта текста)
+        self.stream_overlay.apply_style(
+            self.settings.get("cloud_bg", "#ececec"),
+            self.settings.get("cloud_fg", "#5c5c5c"),
+            self.settings.get("cloud_font", 16),
+            self.settings.get("cloud_opacity", 100),
+            self.settings.get("cloud_font_name", ""))
         self._stream_committed = ""
         self._session_busy = False
         self._rmb_was_down = False
@@ -442,6 +636,8 @@ class MainWindow(QMainWindow):
         self.hold_mode = False
         self._suppress_hotkey = False
         self._stream_epoch = 0      # поколение сессии: гасит запоздалый текст после сброса
+        self._pending_send = False  # облачко держит готовый текст: следующий хоткей его ОТПРАВИТ
+        self._cloud_edited = False  # текст в облачке правили руками — финальный ASR его не затирает
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -467,86 +663,64 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setFixedSize(585, 419)
+        self.setFixedSize(730, 404)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)   # без рамки Windows: внешний размер 730×404
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)  # окно всегда поверх остальных
         self.setStyleSheet("""
-            QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #0d1225, stop:0.5 #111830, stop:1 #0a0f1f);
-            }
-            QLabel { color: #e0e0e0; background: transparent; }
-            QMessageBox { background-color: #1a1a2e; }
-            QMessageBox QLabel { color: #00ff88; }
+            QMainWindow { background: #d9d9d6; }
+            QLabel { color: #000; background: transparent; }
+            QMessageBox { background-color: #f7f7f5; }
+            QMessageBox QLabel { color: #000; }
             QPushButton {
-                background-color: transparent;
-                color: #aaa;
-                border: 1px solid rgba(255,255,255,0.15);
-                border-radius: 18px;
-                padding: 0;
-                font-size: 14px;
+                background-color: #ffffff;
+                color: #444;
+                border: 1px solid #dcdcd8;
+                border-radius: 8px;
+                padding: 4px 10px;
+                font-size: 11px;
             }
-            QPushButton:hover {
-                border-color: #00ff88;
-                color: #00ff88;
-            }
+            QPushButton:hover { background: #f2f2f0; color: #1c1c1c; }
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }
+            QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
         central = QWidget()
         central.setStyleSheet("background: transparent;")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
-        root.setContentsMargins(24, 16, 24, 16)
+        root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(0)
 
         header = QHBoxLayout()
         header.setSpacing(6)
-        header_left = QHBoxLayout()
-        header_left.setSpacing(8)
-        logo_label = QLabel()
+        # блок «логотип + название + слоган»: каждый элемент — отдельный слой
+        # со своей координатой, чтобы можно было двигать в любую сторону
+        brand = QWidget()
+        brand.setFixedSize(150, 42)
+        brand.setStyleSheet("background: transparent;")
+        logo_label = QLabel(brand)
         logo_label.setFixedSize(32, 32)
+        logo_label.move(0, 9)         # слой логотипа: вниз/вверх и влево/вправо — менять здесь
         logo_label.setStyleSheet("background: transparent;")
         logo_label.paintEvent = lambda e: self._paint_cube_logo(logo_label, e)
-        header_left.addWidget(logo_label)
-        title = NeonLabel("Talker Box", font_size=17, color="#00ff88")
+        title = QLabel("Talker Box", brand)
+        title.setStyleSheet("color: #000; font: bold 19px 'Segoe UI'; background: transparent;")
         font_path = os.path.join(get_base_dir(), "fonts", "Orbitron.ttf")
         if os.path.exists(font_path):
             QFontDatabase.addApplicationFont(font_path)
             title._font_family = "Orbitron"
-        header_left.addWidget(title)
-        header.addLayout(header_left)
-        header.addStretch()
+        title.move(40, 0)             # слой названия
+        slogan = QLabel("Пишите голосом", brand)
+        slogan.setStyleSheet("color: #6b6b6b; font: 11px 'Segoe UI'; background: transparent;"
+                             " margin: 0; padding: 0 0 0 1px;")   # шрифт 11 px, сдвиг на 1 px вправо
+        slogan.move(40, 22)           # слой слогана: поднят на 2 px ближе к названию (было 24)
+        header.addWidget(brand)
         root.addLayout(header)
-
-        spacer1 = QWidget()
-        spacer1.setFixedHeight(6)
-        root.addWidget(spacer1)
-
-        hint_widget = QWidget()
-        hint_widget.setStyleSheet("""
-            QWidget {
-                background: rgba(0,255,136,0.04);
-                border: 1px solid rgba(0,255,136,0.1);
-                border-radius: 10px;
-            }
-        """)
-        hint_layout = QHBoxLayout(hint_widget)
-        hint_layout.setContentsMargins(12, 6, 12, 6)
-        hint_label = QLabel(
-            "Откройте программу, где будете писать текст голосом. Наведите курсор на «поле ввода текста», "
-            "после чего активизируйте курсор в «поле ввода текста» нажатием клавиши «ЛКМ». "
-            "Нажмите горячую клавишу и начните начитывать текст в Word или общаться с агентами AI."
-        )
-        hint_label.setWordWrap(True)
-        hint_label.setStyleSheet("color: #00ff88; font-size: 11px; background: transparent; border: none;")
-        hint_label.setAlignment(Qt.AlignmentFlag.AlignJustify)
-        hint_layout.addWidget(hint_label)
-        root.addWidget(hint_widget)
 
         # живой текст показывается в плавающем облачке над полем ввода
         self.signals.stream_phrase.connect(self._on_stream_phrase)
-
-        spacer2 = QWidget()
-        spacer2.setFixedHeight(8)
-        root.addWidget(spacer2)
 
         main_row = QHBoxLayout()
         main_row.setSpacing(12)
@@ -556,10 +730,9 @@ class MainWindow(QMainWindow):
         self.hold_panel = self._create_mode_panel("Режим Hold", "Удерживать",
             "Нажмите и удерживайте горячую клавишу пока диктуете текст и микрофон активен.",
             saved_mode == "hold")
-        main_row.addWidget(self.hold_panel)
-
         center_widget = self._create_center_widget()
         main_row.addWidget(center_widget, 1)
+        main_row.addWidget(self.hold_panel)
 
         self.toggle_panel = self._create_mode_panel("Режим Toggle", "Нажал \u2014 нажал",
             "Нажмите Хоткей, чтобы начать запись и снова нажмите чтобы остановить запись.",
@@ -567,125 +740,146 @@ class MainWindow(QMainWindow):
         main_row.addWidget(self.toggle_panel)
         root.addLayout(main_row)
 
-        spacer3 = QWidget()
-        spacer3.setFixedHeight(10)
-        root.addWidget(spacer3)
+        # нижние карточки «Авто-отправка» и «Горячая клавиша» из макета v3 живут
+        # на вкладке «Настройки» — здесь их больше нет
 
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(12)
-
-        auto_widget = QWidget()
-        auto_widget.setObjectName("ctrl-auto")
-        auto_widget.setFixedHeight(40)
-        auto_widget.setStyleSheet("""
-            QWidget {
-                background: rgba(0,255,136,0.03);
-                border: 1px solid rgba(0,255,136,0.12);
-                border-radius: 14px;
-            }
-        """)
-        auto_layout = QVBoxLayout(auto_widget)
-        auto_layout.setContentsMargins(12, 5, 12, 5)
-        auto_layout.setSpacing(2)
-        auto_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        auto_header = QHBoxLayout()
-        auto_title = QLabel("Авто-отправка (Enter)")
-        auto_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
-        auto_header.addWidget(auto_title)
-        auto_header.addStretch()
-        self.auto_send_toggle = NeonCheckBox(checked=self.settings.get("auto_send"))
-        self.auto_send_toggle.toggled.connect(self.on_auto_send_toggled)
-        auto_header.addWidget(self.auto_send_toggle)
-        auto_layout.addLayout(auto_header)
-        auto_desc = QLabel("Отправляет текст после окончания записи")
-        auto_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
-        auto_layout.addWidget(auto_desc)
-        bottom_row.addWidget(auto_widget)
-
-        hotkey_widget = QWidget()
-        hotkey_widget.setObjectName("ctrl-hotkey")
-        hotkey_widget.setFixedHeight(40)
-        hotkey_widget.setStyleSheet("""
-            QWidget {
-                background: rgba(0,255,136,0.03);
-                border: 1px solid rgba(0,255,136,0.12);
-                border-radius: 14px;
-            }
-        """)
-        hotkey_layout = QVBoxLayout(hotkey_widget)
-        hotkey_layout.setContentsMargins(12, 5, 12, 5)
-        hotkey_layout.setSpacing(2)
-        hotkey_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        hotkey_header = QHBoxLayout()
-        hotkey_title = QLabel("Горячая клавиша")
-        hotkey_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
-        hotkey_header.addWidget(hotkey_title)
-        hotkey_header.addStretch()
-        self.hotkey_btn = QPushButton(self._format_hotkey(self.settings.get("hotkey", "f9")))
-        self.hotkey_btn.setFixedHeight(18)
-        self.hotkey_btn.setStyleSheet("""
-            QPushButton {
-                color: #00ff88; background: transparent;
-                border: 1px solid rgba(0,255,136,0.3); border-radius: 4px;
-                font: bold 12px 'Segoe UI'; padding: 0px 8px;
-            }
-            QPushButton:hover {
-                border-color: #00ff88;
-                background: rgba(0,255,136,0.08);
-            }
-        """)
-        self.hotkey_btn.clicked.connect(self.start_hotkey_capture)
-        self._capturing_hotkey = False
-        hotkey_header.addWidget(self.hotkey_btn)
-        hotkey_layout.addLayout(hotkey_header)
-        hotkey_desc = QLabel("Нажмите любую клавишу или комбинацию")
-        hotkey_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
-        hotkey_layout.addWidget(hotkey_desc)
-        bottom_row.addWidget(hotkey_widget)
-        root.addLayout(bottom_row)
-
-        # ===== Вкладки: Главная / Настройки =====
+        # ===== Вкладки: Главная / Настройки / Словарь / История / О программе =====
         tabs = QHBoxLayout()
         tabs.setSpacing(6)
-        self.btn_tab_main = QPushButton("Главная")
-        self.btn_tab_set = QPushButton("Настройки")
-        self.btn_tab_help = QPushButton("Справка")
+        self.btn_tab_main = TabButton("Главная")
+        self.btn_tab_set = TabButton("Настройки")
+        self.btn_tab_dict = TabButton("Словарь")
+        self.btn_tab_hist = TabButton("История")
+        self.btn_tab_help = TabButton("Инфо")
         self.btn_tab_main.clicked.connect(lambda: self._show_tab("main"))
         self.btn_tab_set.clicked.connect(lambda: self._show_tab("settings"))
+        self.btn_tab_dict.clicked.connect(lambda: self._show_tab("dict"))
+        self.btn_tab_hist.clicked.connect(lambda: self._show_tab("hist"))
         self.btn_tab_help.clicked.connect(lambda: self._show_tab("help"))
-        tabs.addWidget(self.btn_tab_main)
-        tabs.addWidget(self.btn_tab_set)
-        tabs.addWidget(self.btn_tab_help)
+        for b in (self.btn_tab_main, self.btn_tab_set, self.btn_tab_dict,
+                  self.btn_tab_hist, self.btn_tab_help):
+            tabs.addWidget(b)
         tabs.addStretch()
-        root.insertLayout(1, tabs)
+        tabs.setContentsMargins(18, 0, 0, 0)
+        header.addLayout(tabs)   # вкладки в одной строке с названием, сразу за ним
+        win_btns = QHBoxLayout()
+        win_btns.setSpacing(4)
+        btn_min = QPushButton("\u2014")
+        btn_min.setFixedSize(26, 26)
+        btn_min.setStyleSheet("QPushButton { background: transparent; color: #555; border: none;"
+                              " border-radius: 6px; font-size: 13px; }"
+                              "QPushButton:hover { background: #dedede; color: #000; }")
+        btn_min.clicked.connect(self.showMinimized)
+        btn_close = QPushButton("\u2715")
+        btn_close.setFixedSize(26, 26)
+        btn_close.setStyleSheet("QPushButton { background: transparent; color: #555; border: none;"
+                                " border-radius: 6px; font-size: 12px; }"
+                                "QPushButton:hover { background: #dedede; color: #000; }")
+        btn_close.clicked.connect(self.close)   # закрытие = сворачивание в трей, как раньше
+        win_btns.addWidget(btn_min)
+        win_btns.addWidget(btn_close)
+        header.addLayout(win_btns)
+        header.addStretch()   # вкладки прижаты к названию, кнопки окна — к правому краю
+        logo_label.mousePressEvent = self._start_drag
+        title.mousePressEvent = self._start_drag
+        slogan.mousePressEvent = self._start_drag
+        brand.mousePressEvent = self._start_drag
 
         # содержимое окна становится страницей «Главная» (окно не растёт)
         self.main_page = QWidget()
         main_layout = QVBoxLayout(self.main_page)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        while root.count() > 2:
-            item = root.takeAt(2)
+        while root.count() > 1:
+            item = root.takeAt(1)
             if item.widget():
                 main_layout.addWidget(item.widget())
             elif item.layout():
                 main_layout.addLayout(item.layout())
             elif item.spacerItem():
                 main_layout.addSpacerItem(item.spacerItem())
-        root.addWidget(self.main_page)
+        # светлый контейнер содержимого, как .content в макете
+        self.content = QWidget()
+        self.content.setObjectName("content")
+        self.content.setStyleSheet("#content { background: #cfcfcc; border-radius: 12px; }")
+        self.content_lay = QVBoxLayout(self.content)
+        self.content_lay.setContentsMargins(16, 20, 16, 16)
+        self.content_lay.setSpacing(0)
+        root.addSpacing(15)   # отступ от названия и вкладок до светлого контейнера
+        root.addWidget(self.content)
+        self.content.mousePressEvent = self._start_drag   # за светлый фон страниц окно тоже тянется
+        self.mousePressEvent = self._start_drag            # за пустой фон окна и шапки
 
-        # страница «Настройки»
+        self.main_scroll = self._scroll(self.main_page)
+        self.content_lay.addWidget(self.main_scroll)
+
+        # страницы в прокрутке: окно фиксированного размера, длинное содержимое скроллится
         self.settings_page = QWidget()
         self._build_settings_page()
-        root.addWidget(self.settings_page)
-        self.settings_page.hide()
+        self.settings_scroll = self._scroll(self.settings_page)
+        self.content_lay.addWidget(self.settings_scroll)
+        self.settings_scroll.hide()
 
-        # страница «Справка»
+        self.dict_page = QWidget()
+        self._build_dict_page()
+        self.dict_scroll = self._scroll(self.dict_page)
+        self.content_lay.addWidget(self.dict_scroll)
+        self.dict_scroll.hide()
+
+        self.hist_page = QWidget()
+        self._build_hist_page()
+        self.hist_scroll = self._scroll(self.hist_page)
+        self.content_lay.addWidget(self.hist_scroll)
+        self.hist_scroll.hide()
+
         self.help_page = QWidget()
         self._build_help_page()
-        root.addWidget(self.help_page)
-        self.help_page.hide()
+        self.help_scroll = self._scroll(self.help_page)
+        self.content_lay.addWidget(self.help_scroll)
+        self.help_scroll.hide()
         self._show_tab("main")
+
+    def _scroll(self, page):
+        sc = QScrollArea()
+        sc.setWidget(page)
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QFrame.Shape.NoFrame)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        page.setStyleSheet("background: transparent;")
+        return sc
+
+    def _build_dict_page(self):
+        lay = QVBoxLayout(self.dict_page)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+        title = QLabel("Словарь")
+        title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
+        lay.addWidget(title)
+        text = QLabel(
+            "Слова, которые модель распознаёт неправильно, задаются текстовыми файлами в папке словарей.\n"
+            "Формат строки: Правильное слово - неправильный1, неправильный2.\n"
+            "Строки с # — комментарии. Слова из облачка (ПКМ → «Добавить в словарь») дописываются сюда же.")
+        text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        text.setWordWrap(True)
+        lay.addWidget(text)
+        btn = QPushButton("Открыть папку словаря")
+        btn.setFixedHeight(27)
+        btn.clicked.connect(self._open_vocabulary_folder)
+        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        lay.addStretch()
+
+    def _build_hist_page(self):
+        lay = QVBoxLayout(self.hist_page)
+        lay.setContentsMargins(16, 14, 16, 14)
+        lay.setSpacing(10)
+        title = QLabel("История")
+        title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
+        lay.addWidget(title)
+        text = QLabel("История распознавания появится в следующей версии.")
+        text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
+        text.setWordWrap(True)
+        lay.addWidget(text)
+        lay.addStretch()
 
     def _build_help_page(self):
         lay = QVBoxLayout(self.help_page)
@@ -719,77 +913,190 @@ class MainWindow(QMainWindow):
             "0.6" if active else "0.25")
 
     def _show_tab(self, which):
-        self.main_page.setVisible(which == "main")
-        self.settings_page.setVisible(which == "settings")
-        self.help_page.setVisible(which == "help")
-        self.btn_tab_main.setStyleSheet(self._tab_style(which == "main"))
-        self.btn_tab_set.setStyleSheet(self._tab_style(which == "settings"))
-        self.btn_tab_help.setStyleSheet(self._tab_style(which == "help"))
+        pages = {"main": self.main_scroll, "settings": self.settings_scroll, "dict": self.dict_scroll,
+                 "hist": self.hist_scroll, "help": self.help_scroll}
+        buttons = {"main": self.btn_tab_main, "settings": self.btn_tab_set, "dict": self.btn_tab_dict,
+                   "hist": self.btn_tab_hist, "help": self.btn_tab_help}
+        for key, sc in pages.items():
+            sc.setVisible(key == which)
+        for key, b in buttons.items():
+            b.setChecked(key == which)
+
+    # ---------- вкладка «Настройки» — макет dashboard_v3 ----------
+
+    def _set_label(self, text):
+        lab = QLabel(text)
+        lab.setStyleSheet("color: #000; font: 600 11px 'Segoe UI'; background: transparent; border: none;")
+        return lab
+
+    def _set_desc(self, text):
+        lab = QLabel(text)
+        lab.setStyleSheet("color: #222; font: 10px 'Segoe UI'; background: transparent; border: none;")
+        lab.setWordWrap(True)
+        return lab
+
+    def _set_text_block(self, title, desc=None):
+        """Подпись + описание — левая часть строки настроек."""
+        w = QWidget()
+        w.setStyleSheet("background: transparent;")
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(2)
+        lay.addWidget(self._set_label(title))
+        if desc:
+            lay.addWidget(self._set_desc(desc))
+        return w
+
+    def _settings_row(self, first=False):
+        """Строка на всю ширину; разделитель #5c5c5c через обе колонки, как в макете."""
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        box = QVBoxLayout(row)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        if not first:
+            line = QFrame()
+            line.setFixedHeight(1)
+            line.setStyleSheet("background: #5c5c5c; border: none;")
+            box.addWidget(line)
+        body = QWidget()
+        body.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(body)
+        lay.setContentsMargins(2, 8, 2, 8)
+        lay.setSpacing(16)
+        box.addWidget(body)
+        return row, lay
+
+    def _settings_cell(self):
+        cell = QWidget()
+        cell.setStyleSheet("background: transparent;")
+        lay = QHBoxLayout(cell)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(8)
+        return cell, lay
+
+    def _combo_style(self):
+        return ("QComboBox { background: #fafafa; color: #1c1c1c; border: 1px solid #dcdcd8;"
+                " border-radius: 8px; padding: 0 9px; font: 11px 'Segoe UI'; }"
+                "QComboBox:hover { background: #ffffff; border-color: #b8b8b4; }"
+                "QComboBox::drop-down { border: none; width: 18px; }"
+                "QComboBox QAbstractItemView { background: #ffffff; color: #1c1c1c;"
+                " border: 1px solid #dcdcd8; outline: none;"
+                " selection-background-color: #e8e8e4; selection-color: #000000; }")
+
+    def _hotkey_btn_style(self, capturing=False):
+        if capturing:
+            return ("QPushButton { background: #00c25a; color: #ffffff; border: 1px solid #00c25a;"
+                    " border-radius: 8px; padding: 0 14px; font: 600 11px 'Segoe UI'; }")
+        return ("QPushButton { background: #ffffff; color: #444; border: 1px solid #dcdcd8;"
+                " border-radius: 8px; padding: 0 14px; font: 11px 'Segoe UI'; }"
+                "QPushButton:hover { background: #f2f2f0; color: #1c1c1c; }")
+
+    def _cloud_color_btn(self, key, default):
+        b = QPushButton("Цвет")
+        b.setFixedSize(56, 27)
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #444; border: 1px solid #dcdcd8;"
+            " border-radius: 8px; padding: 0; font: 11px 'Segoe UI'; }"
+            "QPushButton:hover { background: #f2f2f0; color: #1c1c1c; }")
+        b.setToolTip("Цвет фона облачка" if key == "cloud_bg" else "Цвет текста в облачке")
+        b.clicked.connect(lambda: self._pick_cloud_color(key, default))
+        return b
 
     def _build_settings_page(self):
         lay = QVBoxLayout(self.settings_page)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
-        title = QLabel("Настройки облачка")
-        title.setStyleSheet("color: #00ff88; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
-        lay.addWidget(title)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
 
-        # блоки управления (авто-отправка, горячая клавиша) — теперь здесь
-        for name in ("ctrl-auto", "ctrl-hotkey"):
-            w = self.findChild(QWidget, name)
-            if w:
-                lay.addWidget(w)
+        group = GroupBox("Настройки программы", inner=False)
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        grid = QVBoxLayout(content)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(0)
 
-        # карточка включения облачка — в стиле «Авто-отправка»
-        cloud_widget = QWidget()
-        cloud_widget.setFixedHeight(40)
-        cloud_widget.setStyleSheet("""
-            QWidget {
-                background: rgba(0,255,136,0.03);
-                border: 1px solid rgba(0,255,136,0.12);
-                border-radius: 14px;
-            }
-        """)
-        cloud_layout = QVBoxLayout(cloud_widget)
-        cloud_layout.setContentsMargins(12, 5, 12, 5)
-        cloud_layout.setSpacing(2)
-        cloud_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        cloud_header = QHBoxLayout()
-        cloud_title = QLabel("Облачко распознаваемого текста в момент диктовки.")
-        cloud_title.setStyleSheet("color: #00ff88; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
-        cloud_header.addWidget(cloud_title)
-        cloud_header.addStretch()
-        self.cloud_toggle = NeonCheckBox(checked=self.settings.get("cloud_enabled", True))
+        # --- строка 1: горячая клавиша ---
+        row, body = self._settings_row(first=True)
+        left, ll = self._settings_cell()
+        ll.addWidget(self._set_text_block("Горячая клавиша",
+                                          "Нажмите любую клавишу или комбинацию"))
+        ll.addStretch()
+        body.addWidget(left, 1)
+
+        right, rl = self._settings_cell()
+        rl.addStretch()
+        self.hotkey_btn = QPushButton(self._format_hotkey(self.settings.get("hotkey", "ctrl+win")))
+        self.hotkey_btn.setFixedHeight(27)
+        self.hotkey_btn.setMinimumWidth(120)
+        self.hotkey_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.hotkey_btn.setStyleSheet(self._hotkey_btn_style())
+        self.hotkey_btn.clicked.connect(self.start_hotkey_capture)
+        self._capturing_hotkey = False
+        rl.addWidget(self.hotkey_btn)
+        body.addWidget(right, 1)
+        grid.addWidget(row)
+
+        # --- строка 2: облако текста, цвет фона, прозрачность, вкл/выкл ---
+        row, body = self._settings_row()
+        left, ll = self._settings_cell()
+        ll.addWidget(self._set_text_block("Облако распознаваемого текста",
+                                          "Отображает текст на экране в облачке"))
+        ll.addStretch()
+        ll.addWidget(self._cloud_color_btn("cloud_bg", "#ececec"))
+        body.addWidget(left, 1)
+
+        right, rl = self._settings_cell()
+        rl.addWidget(self._set_label("Прозрачность:"))
+        self.cloud_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.cloud_opacity.setRange(20, 100)
+        self.cloud_opacity.setValue(int(self.settings.get("cloud_opacity", 100)))
+        self.cloud_opacity.setFixedWidth(80)
+        self.cloud_opacity.setStyleSheet(
+            "QSlider::groove:horizontal { height: 3px; background: #c6c6c2; border-radius: 2px; }"
+            "QSlider::sub-page:horizontal { background: #c6c6c2; border-radius: 2px; }"
+            "QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0;"
+            " border-radius: 6px; background: #f2f2f0; border: 1px solid #b8b8b4; }")
+        self.cloud_opacity.valueChanged.connect(self._apply_cloud_settings)
+        rl.addWidget(self.cloud_opacity)
+        rl.addStretch()
+        self.cloud_toggle = ToggleSwitch(checked=self.settings.get("cloud_enabled", True))
         self.cloud_toggle.toggled.connect(self._toggle_cloud)
-        cloud_header.addWidget(self.cloud_toggle)
-        cloud_layout.addLayout(cloud_header)
-        cloud_desc = QLabel("При включении отображает распознаваемый текст на экране в облачке")
-        cloud_desc.setStyleSheet("color: #666; font-size: 11px; background: transparent; border: none;")
-        cloud_layout.addWidget(cloud_desc)
-        lay.addWidget(cloud_widget)
+        rl.addWidget(self.cloud_toggle)
+        body.addWidget(right, 1)
+        grid.addWidget(row)
 
-        row1 = QHBoxLayout()
-        row1.setSpacing(8)
-        row1.addWidget(self._cloud_color_btn("Фон", "cloud_bg", "#ececec"))
-        row1.addWidget(self._cloud_color_btn("Текст", "cloud_fg", "#5c5c5c"))
-        row1.addStretch()
-        lay.addLayout(row1)
+        # --- строка 3: шрифт и размер, цвет текста ---
+        row, body = self._settings_row()
+        left, ll = self._settings_cell()
+        ll.addWidget(self._set_label("Шрифт"))
 
-        row2 = QHBoxLayout()
-        row2.setSpacing(8)
-        fl = QLabel("Шрифт:")
-        fl.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        row2.addWidget(fl)
+        self.cloud_font_name = QComboBox()
+        self.cloud_font_name.setFixedHeight(27)
+        self.cloud_font_name.setMinimumWidth(150)
+        self.cloud_font_name.setStyleSheet(self._combo_style())
+        view = self.cloud_font_name.view()
+        view.setStyleSheet("QListView { background: #ffffff; color: #1c1c1c;"
+                           " border: 1px solid #dcdcd8; outline: none; }")
+        families = QFontDatabase.families()
+        self.cloud_font_name.addItem("(по умолчанию)")
+        for fam in families:
+            self.cloud_font_name.addItem(fam)
+            idx = self.cloud_font_name.count() - 1
+            # белый фон, чёрный текст, своё начертание — всё видно сразу
+            self.cloud_font_name.setItemData(idx, QColor("#1c1c1c"), Qt.ItemDataRole.ForegroundRole)
+            self.cloud_font_name.setItemData(idx, QColor("#ffffff"), Qt.ItemDataRole.BackgroundRole)
+            self.cloud_font_name.setItemData(idx, QFont(fam), Qt.ItemDataRole.FontRole)
+        saved = self.settings.get("cloud_font_name", "")
+        if saved and saved in families:
+            self.cloud_font_name.setCurrentText(saved)
+        self.cloud_font_name.currentTextChanged.connect(self._apply_cloud_settings)
+        ll.addWidget(self.cloud_font_name, 1)
+
         self.cloud_font_size = QComboBox()
-        self.cloud_font_size.setFixedWidth(52)
+        self.cloud_font_size.setFixedSize(56, 27)
         self.cloud_font_size.setEditable(False)   # только выбор из списка, текст ввести нельзя
-        self.cloud_font_size.setStyleSheet(
-            "QComboBox { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
-            " border-radius: 4px; padding: 2px 4px; }"
-            "QComboBox:hover { border-color: #00aa66; }"
-            "QComboBox::drop-down { border: none; width: 16px; }"
-            "QComboBox QAbstractItemView { background: #ffffff; color: #222222;"
-            " selection-background-color: #d6f5e8; }")
+        self.cloud_font_size.setStyleSheet(self._combo_style())
         sizes = ["14", "16", "18"]
         self.cloud_font_size.addItems(sizes)
         saved_size = str(self.settings.get("cloud_font", 16))
@@ -800,71 +1107,23 @@ class MainWindow(QMainWindow):
                 saved_size = "16"
         self.cloud_font_size.setCurrentText(saved_size)
         self.cloud_font_size.currentTextChanged.connect(self._apply_cloud_settings)
-        row2.addWidget(self.cloud_font_size)
+        ll.addWidget(self.cloud_font_size)
+        body.addWidget(left, 1)
 
-        ol = QLabel("Прозрачность:")
-        ol.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        row2.addWidget(ol)
-        self.cloud_opacity = QSlider(Qt.Orientation.Horizontal)
-        self.cloud_opacity.setRange(20, 100)
-        self.cloud_opacity.setValue(int(self.settings.get("cloud_opacity", 100)))
-        self.cloud_opacity.setFixedWidth(140)
-        self.cloud_opacity.valueChanged.connect(self._apply_cloud_settings)
-        row2.addWidget(self.cloud_opacity)
-        row2.addStretch()
-        lay.addLayout(row2)
+        right, rl = self._settings_cell()
+        rl.addStretch()
+        rl.addWidget(self._cloud_color_btn("cloud_fg", "#5c5c5c"))
+        body.addWidget(right, 1)
+        grid.addWidget(row)
 
-        # выбор шрифта системы
-        row3 = QHBoxLayout()
-        row3.setSpacing(8)
-        nf = QLabel("Шрифт системы:")
-        nf.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        row3.addWidget(nf)
-        self.cloud_font_name = QComboBox()
-        self.cloud_font_name.setFixedWidth(190)
-        self.cloud_font_name.setStyleSheet(
-            "QComboBox { background: #ffffff; color: #222222;"
-            " border: 1px solid #999999; border-radius: 4px;"
-            " font: 11px 'Segoe UI'; padding: 2px 6px; }"
-            "QComboBox:hover { border-color: #00aa66; }"
-            "QComboBox::drop-down { border: none; width: 20px; }"
-            "QComboBox QAbstractItemView { background: #ffffff; color: #222222;"
-            " border: 1px solid #999999; selection-background-color: #cfe8d8;"
-            " selection-color: #000000; outline: none; }")
-        view = self.cloud_font_name.view()
-        view.setStyleSheet("QListView { background: #ffffff; color: #222222; border: 1px solid #999999; }")
-        pal = view.palette()
-        pal.setColor(view.backgroundRole(), QColor("#ffffff"))
-        pal.setColor(view.foregroundRole(), QColor("#222222"))
-        view.setPalette(pal)
-        families = QFontDatabase.families()
-        self.cloud_font_name.addItem("(по умолчанию)")
-        self.cloud_font_name.setItemData(0, QColor("#222222"), Qt.ItemDataRole.ForegroundRole)
-        self.cloud_font_name.setItemData(0, QColor("#ffffff"), Qt.ItemDataRole.BackgroundRole)
-        for fam in families:
-            self.cloud_font_name.addItem(fam)
-            idx = self.cloud_font_name.count() - 1
-            # белый фон, чёрный текст, своё начертание — всё видно сразу
-            self.cloud_font_name.setItemData(idx, QColor("#222222"), Qt.ItemDataRole.ForegroundRole)
-            self.cloud_font_name.setItemData(idx, QColor("#ffffff"), Qt.ItemDataRole.BackgroundRole)
-            self.cloud_font_name.setItemData(idx, QFont(fam), Qt.ItemDataRole.FontRole)
-        saved = self.settings.get("cloud_font_name", "")
-        if saved and saved in families:
-            self.cloud_font_name.setCurrentText(saved)
-        self.cloud_font_name.currentTextChanged.connect(self._apply_cloud_settings)
-        row3.addWidget(self.cloud_font_name)
-        row3.addStretch()
-        lay.addLayout(row3)
-
-        # выбор микрофона (средствами программы, без настроек Windows)
-        row4 = QHBoxLayout()
-        row4.setSpacing(8)
-        mf = QLabel("Микрофон:")
-        mf.setStyleSheet("color: #9a9a9a; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        row4.addWidget(mf)
+        # --- строка 4: микрофон и авто-отправка ---
+        row, body = self._settings_row()
+        left, ll = self._settings_cell()
+        ll.addWidget(self._set_label("Микрофон:"))
         self.mic_combo = QComboBox()
-        self.mic_combo.setFixedWidth(190)
-        self.mic_combo.setStyleSheet(self.cloud_font_name.styleSheet())
+        self.mic_combo.setFixedHeight(27)
+        self.mic_combo.setMinimumWidth(150)
+        self.mic_combo.setStyleSheet(self._combo_style())
         self.mic_combo.addItem("(системный по умолчанию)")
         try:
             import sounddevice as _sd
@@ -879,25 +1138,30 @@ class MainWindow(QMainWindow):
             if i >= 0:
                 self.mic_combo.setCurrentIndex(i)
         self.mic_combo.currentIndexChanged.connect(self._on_mic_changed)
-        row4.addWidget(self.mic_combo)
-        row4.addStretch()
-        lay.addLayout(row4)
-        self._on_mic_changed()
+        ll.addWidget(self.mic_combo, 1)
+        body.addWidget(left, 1)
 
-        lay.addStretch()
+        right, rl = self._settings_cell()
+        rl.addWidget(self._set_text_block("Авто-отправка (Enter)",
+                                          "Отправляет текст после окончания записи"))
+        rl.addStretch()
+        self.auto_send_toggle = ToggleSwitch(checked=self.settings.get("auto_send"))
+        self.auto_send_toggle.toggled.connect(self.on_auto_send_toggled)
+        rl.addWidget(self.auto_send_toggle)
+        body.addWidget(right, 1)
+        grid.addWidget(row)
+
+        grid.addStretch(1)
+        group.set_content(content)
+        lay.addWidget(group)
+
+        self._on_mic_changed()
         self._apply_cloud_settings()
 
     def _input_style(self):
         return ("QLineEdit { color: #00ff88; background: transparent;"
                 " border: 1px solid rgba(0,255,136,0.3); border-radius: 4px;"
                 " font: bold 11px 'Segoe UI'; padding: 0 6px; }")
-
-    def _cloud_color_btn(self, title, key, default):
-        b = QPushButton(title)
-        b.setFixedHeight(24)
-        b.setStyleSheet(self._tab_style(True))
-        b.clicked.connect(lambda: self._pick_cloud_color(key, default))
-        return b
 
     def _pick_cloud_color(self, key, default):
         dlg = QColorDialog(QColor(self.settings.get(key, default)), self)
@@ -944,6 +1208,26 @@ class MainWindow(QMainWindow):
         self.recorder.device = dev
         log("MIC_SELECTED", f"{name or 'default'} -> device={dev}")
 
+    def _open_vocabulary_folder(self):
+        """Открыть папку vocabularies — туда кладутся текстовые файлы словарей."""
+        from vocabulary.manager import VocabularyManager
+        try:
+            manager = self.transcriber.vocabulary if self.transcriber else VocabularyManager()
+            path = manager.vocab_dir
+            os.makedirs(path, exist_ok=True)
+            os.startfile(path)          # открывается Проводник Windows
+            log("VOCAB_FOLDER", path)
+        except Exception as e:
+            log("VOCAB_FOLDER_ERROR", str(e))
+
+    def _reload_vocabulary(self):
+        """Словарь изменился — обновить буст слов в модели (в фоне)."""
+        try:
+            if self.transcriber:
+                threading.Thread(target=self.transcriber.reload_vocabulary, daemon=True).start()
+        except Exception:
+            pass
+
     def _apply_cloud_settings(self):
         try:
             size = int(self.cloud_font_size.currentText())
@@ -975,12 +1259,12 @@ class MainWindow(QMainWindow):
     def _paint_cube_logo(self, widget, event):
         p = QPainter(widget)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(QColor("#00ff88"), 1.5))
-        p.setBrush(QBrush(QColor(0, 255, 136, 30)))
+        p.setPen(QPen(QColor("#1c1c1c"), 1.5))
+        p.setBrush(QBrush(QColor(28, 28, 28, 30)))
         p.drawPolygon(QPolygonF([QPointF(16, 2), QPointF(30, 9), QPointF(16, 16), QPointF(2, 9)]))
-        p.setBrush(QBrush(QColor(0, 255, 136, 15)))
+        p.setBrush(QBrush(QColor(28, 28, 28, 15)))
         p.drawPolygon(QPolygonF([QPointF(2, 9), QPointF(16, 16), QPointF(16, 30), QPointF(2, 23)]))
-        p.setBrush(QBrush(QColor(0, 255, 136, 20)))
+        p.setBrush(QBrush(QColor(28, 28, 28, 20)))
         p.drawPolygon(QPolygonF([QPointF(30, 9), QPointF(16, 16), QPointF(16, 30), QPointF(30, 23)]))
         p.end()
 
@@ -1016,23 +1300,25 @@ class MainWindow(QMainWindow):
         p.end()
 
     def _create_mode_panel(self, subtitle, title, desc, active):
-        panel = QWidget()
+        # на бирке текст заглавными (макет v3), внутри — свои подписи
+        panel = GroupBox(subtitle.upper(), active=active)
         panel.setCursor(Qt.CursorShape.PointingHandCursor)
         panel._active = active
-        self._update_panel_style(panel, active)
 
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(10, 28, 10, 12)
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 6, 0, 0)
         layout.setSpacing(4)
         layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
         icon_container = QWidget()
-        icon_container.setFixedSize(44, 44)
+        icon_container.setFixedSize(50, 50)
         icon_container._is_hold = "HOLD" in subtitle.upper()
         icon_container.setStyleSheet(f"""
-            border: 2px solid {'#00ff88' if active else '#444'};
-            border-radius: 22px;
-            background: {'rgba(0,255,136,0.1)' if active else 'transparent'};
+            border: 1px solid {'#1c1c1c' if active else '#e2e2de'};
+            border-radius: 25px;
+            background: #ffffff;
         """)
         icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
         icon_container._is_hold = "HOLD" in subtitle.upper()
@@ -1040,42 +1326,36 @@ class MainWindow(QMainWindow):
         layout.addWidget(icon_container, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         sub = QLabel(subtitle.upper())
-        sub.setStyleSheet(f"color: {'#00ff88' if active else '#666'}; font: bold 12px 'Segoe UI'; background: transparent; border: none; text-transform: uppercase;")
+        sub.setStyleSheet(f"color: {'#000' if active else '#777'}; font: bold 10px 'Segoe UI'; background: transparent; border: none;")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(sub)
 
         t = QLabel(title)
-        t.setStyleSheet(f"color: {'#00ff88' if active else '#666'}; font: bold 14px 'Segoe UI'; background: transparent; border: none;")
+        t.setStyleSheet("color: #00c25a; font: 11px 'Segoe UI'; background: transparent; border: none;")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(t)
 
         d = QLabel(desc)
         d.setWordWrap(True)
-        d.setStyleSheet("color: #888; font-size: 11px; background: transparent; border: none;")
+        d.setStyleSheet("color: #222; font-size: 11px; background: transparent; border: none;")
         d.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(d)
 
+        layout.insertStretch(0)   # содержимое центрируется по вертикали, как в макете — подписи идут плотно
+        layout.addStretch()
+        panel.set_content(content)
         panel.mousePressEvent = lambda e, p=panel, s=subtitle: self._on_panel_click(p, s)
         panel._title_label = t
         panel._subtitle_label = sub
         return panel
 
     def _update_panel_style(self, panel, active):
-        panel.setStyleSheet(f"""
-            QWidget {{
-                background: rgba(0,255,136,0.03);
-                border: 2px solid {'#00ff88' if active else '#444'};
-                border-radius: 16px;
-            }}
-            QWidget:hover {{
-                border-color: {'#00ff88' if active else '#666'};
-            }}
-        """)
+        panel.set_active(active)
 
     def _paint_mode_icon(self, widget, event, active):
         p = QPainter(widget)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = "#00ff88" if active else "#555"
+        color = "#1c1c1c" if active else "#555"
         p.setPen(QPen(QColor(color), 1.5))
         p.setBrush(Qt.BrushStyle.NoBrush)
         cx, cy = widget.width() // 2, widget.height() // 2
@@ -1112,14 +1392,14 @@ class MainWindow(QMainWindow):
         self._update_panel_texts(self.toggle_panel, not is_hold)
 
     def _update_panel_texts(self, panel, active):
-        color = "#00ff88" if active else "#666"
-        panel._subtitle_label.setStyleSheet(f"color: {color}; font: bold 12px 'Segoe UI'; background: transparent; border: none;")
-        panel._title_label.setStyleSheet(f"color: {color}; font: bold 14px 'Segoe UI'; background: transparent; border: none;")
+        color = "#000" if active else "#777"
+        panel._subtitle_label.setStyleSheet(f"color: {color}; font: bold 10px 'Segoe UI'; background: transparent; border: none;")
+        panel._title_label.setStyleSheet("color: #00c25a; font: 11px 'Segoe UI'; background: transparent; border: none;")
         icon_container = panel._icon_container
         icon_container.setStyleSheet(f"""
-            border: 2px solid {'#00ff88' if active else '#444'};
-            border-radius: 22px;
-            background: {'rgba(0,255,136,0.1)' if active else 'transparent'};
+            border: 1px solid {'#1c1c1c' if active else '#e2e2de'};
+            border-radius: 25px;
+            background: #ffffff;
         """)
         icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
         icon_container.update()
@@ -1140,62 +1420,75 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._circle_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self._mascot_label = QLabel()
-        mascot_path = os.path.join(get_base_dir(), "mascot.png")
+        mascot_path = os.path.join(get_base_dir(), "mascot_new.png")
+        if not os.path.exists(mascot_path):
+            mascot_path = os.path.join(get_base_dir(), "mascot.png")
         if os.path.exists(mascot_path):
-            self._mascot_label.setPixmap(QPixmap(mascot_path).scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self._mascot_label.setPixmap(QPixmap(mascot_path).scaled(112, 112, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
             self._mascot_label.setText("\U0001f916")
             self._mascot_label.setStyleSheet("font-size: 48px; background: transparent; border: none;")
         self._mascot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._mascot_label.setParent(self._circle_widget)
-        self._mascot_label.setFixedSize(80, 80)
-        self._mascot_label.move(60, 35)
+        self._mascot_label.setFixedSize(112, 112)
+        self._mascot_label.move(46, 24)
 
         sig_label = QLabel("УРОВЕНЬ СИГНАЛА")
-        sig_label.setStyleSheet("color: #666; font-size: 8px; font-weight: bold; letter-spacing: 2px; background: transparent; border: none;")
+        sig_label.setStyleSheet("color: #333; font-size: 10px; letter-spacing: 2px; background: transparent; border: none;")
         sig_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sig_label.setParent(self._circle_widget)
         sig_label.setFixedSize(180, 14)
-        sig_label.move(10, 120)
+        sig_label.move(11, 130)
 
         self._signal_value_label = QLabel(f"{self._signal_level}%")
-        self._signal_value_label.setStyleSheet("color: #00ff88; font: bold 28px 'Segoe UI'; background: transparent; border: none;")
+        self._signal_value_label.setStyleSheet("color: #00c25a; font: bold 28px 'Segoe UI'; background: transparent; border: none;")
         self._signal_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._signal_value_label.setParent(self._circle_widget)
         self._signal_value_label.setFixedSize(180, 36)
-        self._signal_value_label.move(10, 132)
+        self._signal_value_label.move(11, 140)
 
         self._signal_timer = QTimer()
         self._signal_timer.timeout.connect(self._update_signal)
         self._signal_timer.start(1500)
 
-        return widget
+        return GroupBox("Уровень сигнала", widget)
 
     def _paint_circle(self, widget, event):
         p = QPainter(widget)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = widget.width(), widget.height()
         cx, cy, r = w // 2, h // 2, 90
+        r2 = r - 4 - 3
 
-        pen_track = QPen(QColor(0, 255, 136, 20), 4)
+        # круглый фон под маскотом — .level-inner из макета: чуть темнее панели,
+        # радиальный градиент со светлым верхом (#f4f4f2 → #eaeae7)
+        grad = QRadialGradient(cx, cy - r2 * 0.24, float(r2))
+        grad.setColorAt(0.0, QColor("#f4f4f2"))
+        grad.setColorAt(0.75, QColor("#eaeae7"))
+        grad.setColorAt(1.0, QColor("#eaeae7"))
+        p.setPen(QPen(QColor("#e4e4e0"), 1))
+        p.setBrush(QBrush(grad))
+        p.drawEllipse(cx - r2, cy - r2, r2 * 2, r2 * 2)
+
+        pen_track = QPen(QColor(226, 226, 222), 3)
         p.setPen(pen_track)
+        p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
         span = int(360 * 16 * self._signal_level / 100)
-        pen_active = QPen(QColor("#00ff88"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        pen_active = QPen(QColor("#00c25a"), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         p.setPen(pen_active)
         p.drawArc(cx - r, cy - r, r * 2, r * 2, 90 * 16, -span)
 
-        r2 = r - 4 - 3
         if self.is_recording:
-            pen_inner = QPen(QColor("#00ff88"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            pen_inner = QPen(QColor("#00c25a"), 3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
             p.setPen(pen_inner)
             p.drawEllipse(cx - r2, cy - r2, r2 * 2, r2 * 2)
-            glow = QColor(0, 255, 136, 30)
+            glow = QColor(0, 194, 90, 30)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QBrush(glow))
             p.drawEllipse(cx - r2 - 4, cy - r2 - 4, r2 * 2 + 8, r2 * 2 + 8)
         else:
-            pen_inner = QPen(QColor(0, 255, 136, 30), 2)
+            pen_inner = QPen(QColor(228, 228, 224), 2)
             p.setPen(pen_inner)
             p.drawEllipse(cx - r2, cy - r2, r2 * 2, r2 * 2)
 
@@ -1320,8 +1613,12 @@ class MainWindow(QMainWindow):
         p = QPainter(base)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor(color).darker(300)))
+        p.setBrush(QBrush(QColor(122, 122, 118)))
         p.drawEllipse(4, 4, 56, 56)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setPen(QPen(QColor(color), 3))
+        p.drawEllipse(5, 5, 54, 54)
+        p.setPen(Qt.PenStyle.NoPen)
         icon_path = os.path.join(get_base_dir(), "talker_box.png")
         if os.path.exists(icon_path):
             icon_pixmap = QPixmap(icon_path).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -1376,12 +1673,17 @@ class MainWindow(QMainWindow):
             if mode == "toggle":
                 if self.is_recording:
                     self.stop_recording()
+                elif self._has_pending_text():
+                    self.send_pending()
                 else:
                     self.start_recording()
             else:
                 if not self.is_recording:
-                    self.start_recording()
-                    self.hold_mode = True
+                    if self._has_pending_text():
+                        self.send_pending()     # текст висит в облачке — хоткей его отправляет
+                    else:
+                        self.start_recording()
+                        self.hold_mode = True
 
         elif event == "UP":
             log("HOTKEY_UP", f"mode={self.settings.get('mode')} hold={self.hold_mode} recording={self.is_recording}")
@@ -1397,6 +1699,7 @@ class MainWindow(QMainWindow):
                 self._recording_timeout = None
             log("RECORD_START", f"mode={self.settings.get('mode')}")
             self.is_recording = True
+            self._target_hwnd = self._foreground_hwnd()   # окно, куда уйдёт текст
             self._recording_start_time = time.monotonic()
             self.phrase_stream.transcriber = self.transcriber
             self.phrase_stream.start()
@@ -1404,6 +1707,8 @@ class MainWindow(QMainWindow):
             self.phrase_stream.on_phrase = lambda t, p=False: self.signals.stream_phrase.emit(t, p)
             self._stream_epoch += 1
             self._stream_committed = ""
+            self._pending_send = False
+            self._cloud_edited = False
             self.stream_overlay.capture_anchor()   # облачко закрепляется у поля ввода
             self.stream_overlay.set_send_visible(True)   # кнопка «Отправить» — на время диктовки
             self.recorder.stream_hook = self.phrase_stream.feed
@@ -1411,6 +1716,7 @@ class MainWindow(QMainWindow):
             self._ignore_text = False   # новая диктовка — её текст вставлять можно
             if self.settings.get("cloud_enabled", True):
                 self.waveform.hide_wave()   # волна живёт в облачке
+                self.stream_overlay.show_idle()   # сразу после хоткея — спокойная волна, облачко потом
             else:
                 self.waveform.show_recording()
             self.signals.recording_started.emit()
@@ -1431,7 +1737,7 @@ class MainWindow(QMainWindow):
             self.stop_recording()
 
     def _on_send_click(self):
-        """Кнопка «Отправить»: звук-подтверждение (как у режимов) и завершение диктовки."""
+        """Кнопка «Отправить»: звук-подтверждение и отправка того, что в облачке."""
         log("SEND_CLICK", "кнопка «Отправить»")
         try:
             import winsound
@@ -1440,7 +1746,117 @@ class MainWindow(QMainWindow):
                 winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
         except Exception:
             pass
-        self.stop_recording()
+        if self.is_recording:
+            self.stop_recording()      # ещё диктуем — сначала остановиться
+        elif self._has_pending_text():
+            self.send_pending()        # текст уже готов — отправить его
+
+    def _has_pending_text(self):
+        """В облачке лежит готовый текст, ждущий отправки?"""
+        if not self._pending_send:
+            return False
+        try:
+            if not self.stream_overlay.isVisible():
+                return False
+            return bool((self.stream_overlay.label.text() or "").strip())
+        except Exception:
+            return False
+
+    def send_pending(self):
+        """Отправить текст из облачка — ровно в том виде, в каком его оставил пользователь."""
+        text = ""
+        try:
+            text = (self.stream_overlay.label.text() or "").strip()
+        except Exception:
+            text = ""
+        text = text or (self._stream_committed or "").strip()
+        self._pending_send = False
+        if not text:
+            log("SEND_PENDING", "пусто — нечего отправлять")
+            self.stream_overlay.hide()
+            self.stream_overlay.clear_anchor()
+            return
+        log("SEND_PENDING", f"len={len(text)}")
+        self._suppress_hotkey = True
+        self.phrase_stream.on_phrase = None   # запоздалые куски не перерисуют облачко
+        self._stream_epoch += 1               # и не вставятся после отправки
+        # цель — текущее активное окно (за время правок пользователь мог переключиться)
+        hwnd = self._foreground_hwnd()
+        if hwnd:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                pid = wintypes.DWORD()
+                ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value != os.getpid():      # свои же окна целью не берём
+                    self._target_hwnd = hwnd
+            except Exception:
+                pass
+        self.recorder.stream_hook = None
+        self._do_paste(text)
+
+    def _on_add_word_request(self, selected):
+        """Выделенное слово из облачка → форма «Добавить в словарь»."""
+        wrong = (selected or "").strip()
+        if not wrong:
+            return
+        from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton
+        from vocabulary.manager import VocabularyManager
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Добавить в словарь")
+        dlg.setStyleSheet(
+            "QDialog { background: #ffffff; }"
+            "QLabel { color: #333333; font-size: 12px; background: transparent; border: none; }"
+            "QLineEdit { color: #222222; background: #ffffff; border: 1px solid #bbbbbb;"
+            " border-radius: 4px; padding: 3px 6px; font-size: 12px; }"
+            "QPushButton { color: #ffffff; background: #2e8b75; border: none;"
+            " border-radius: 6px; padding: 5px 16px; font-size: 12px; }"
+            "QPushButton:hover { background: #14b89a; }")
+        lay = QVBoxLayout(dlg)
+        lay.setSpacing(8)
+        lay.addWidget(QLabel("Неправильно (так написала модель):"))
+        wrong_edit = QLineEdit(wrong)
+        wrong_edit.setReadOnly(True)
+        lay.addWidget(wrong_edit)
+        lay.addWidget(QLabel("Правильное слово (писать руками):"))
+        right_edit = QLineEdit()
+        lay.addWidget(right_edit)
+        lay.addWidget(QLabel("Ещё варианты ошибок (через запятую, необязательно):"))
+        more_edit = QLineEdit()
+        lay.addWidget(more_edit)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        ok_btn = QPushButton("Добавить")
+        cancel_btn = QPushButton("Отмена")
+        buttons.addWidget(ok_btn)
+        buttons.addWidget(cancel_btn)
+        lay.addLayout(buttons)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        right_edit.setFocus()
+
+        if not dlg.exec():
+            return
+        target = right_edit.text().strip()
+        if not target:
+            return
+        variants = [wrong] + [v.strip() for v in more_edit.text().split(",") if v.strip()]
+        try:
+            manager = self.transcriber.vocabulary if self.transcriber else VocabularyManager()
+            manager.add_word(target, variants)
+            log("VOCAB_ADD", f"{wrong!r} -> {target!r}")
+            self._reload_vocabulary()
+        except Exception as e:
+            log("VOCAB_ADD_ERROR", str(e))
+        # слово исправляется сразу в тексте облачка
+        try:
+            fixed = self.stream_overlay.replace_in_text(wrong, target)
+            if fixed:
+                self._stream_committed = fixed
+                self._cloud_edited = True   # правки в облачке — финальный ASR их не затрёт
+        except Exception:
+            pass
 
     def stop_recording(self):
         if self.is_recording:
@@ -1449,17 +1865,17 @@ class MainWindow(QMainWindow):
                 self._recording_timeout = None
             self.recorder.stream_hook = None
             audio = self.recorder.stop()
-            self._stream_committed = ""
-            # облачко остаётся видимым — текст можно прочитать и проверить;
-            # исчезнет в момент отправки в поле ввода
+            # облачко остаётся видимым с полным текстом: его можно долго читать,
+            # править (в т.ч. словарём) и отправить следующим нажатием хоткея
             frames = len(audio) if len(audio) > 0 else 0
             duration = frames / 16000 if frames > 0 else 0
             log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
             self.is_recording = False
+            self._pending_send = True    # текст ждёт отправки, хоткей больше не начнёт запись
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
-            self.stream_overlay.set_send_visible(False)  # диктовка завершена — кнопка не нужна
+            self.stream_overlay.set_send_visible(True)   # «Отправить» остаётся — текст ждёт
             play_stop_sound()
             self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
@@ -1493,15 +1909,9 @@ class MainWindow(QMainWindow):
                     if self.recorder.is_recording:
                         self._stream_reset()
                     else:
-                        self.stream_overlay.hide()   # диктовки нет — просто закрываем
+                        self._pending_send = False   # просто закрыли облачко — текст не ждёт
+                        self.stream_overlay.hide()
 
-            # правая кнопка мыши — сброс в любом месте
-            st2 = user32.GetAsyncKeyState(0x02)
-            down2 = bool(st2 & 0x8000)
-            clicked2 = (down2 and not self._rmb_was_down) or bool(st2 & 0x0001)
-            self._rmb_was_down = down2
-            if clicked2 and self.recorder.is_recording:
-                self._stream_reset()
         except Exception as e:
             log("CLICK_CHECK_ERROR", str(e))
 
@@ -1519,6 +1929,31 @@ class MainWindow(QMainWindow):
         """Координата внутри прямоугольника (r = x, y, w, h)."""
         rx, ry, rw, rh = r
         return rx <= x <= rx + rw and ry <= y <= ry + rh
+
+    @staticmethod
+    def _foreground_hwnd():
+        """Дескриптор активного окна (куда смотрит пользователь)."""
+        try:
+            import ctypes
+            return ctypes.windll.user32.GetForegroundWindow()
+        except Exception:
+            return 0
+
+    def _focus_target(self):
+        """Вернуть фокус в окно назначения: облачко могло забрать его при выделении."""
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = getattr(self, "_target_hwnd", 0)
+            if not hwnd or not user32.IsWindow(hwnd):
+                return
+            if user32.GetForegroundWindow() != hwnd:
+                # ход с Alt: разрешает системе передать фокус другому окну
+                user32.keybd_event(0x12, 0, 0, 0)
+                user32.keybd_event(0x12, 0, 2, 0)
+                user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
 
     def _stream_reset(self):
         """Сброс: полная остановка сессии — новая диктовка только по хоткею заново."""
@@ -1541,6 +1976,8 @@ class MainWindow(QMainWindow):
         self._suppress_hotkey = False
         self._last_time_text = ""
         self._ignore_text = True   # запоздалый текст отменённой диктовки не вставляем
+        self._pending_send = False
+        self._cloud_edited = False
         # буфер обмена не трогаем: он программе не нужен, а чужие картинки целы
         self.stream_overlay.set_wave_active(False)   # отмена — волна замирает
         self.stream_overlay.set_send_visible(False)
@@ -1550,6 +1987,8 @@ class MainWindow(QMainWindow):
 
     def _on_stream_phrase(self, text, partial=False):
         """Живой текст: слова появляются по мере речи; на паузе — точная фраза."""
+        if not self.is_recording:
+            return   # речь остановлена — запоздалые куски не должны перебивать правки
         if partial:
             shown = (self._stream_committed + " " + text).strip()
         else:
@@ -1586,6 +2025,8 @@ class MainWindow(QMainWindow):
 
     def _on_session_text(self, text):
         """Показываем точный текст — ровно тот, что уйдёт в поле ввода."""
+        if not self.is_recording:
+            return   # сессия уже остановлена — её текст не перезаписываем
         self._stream_committed = text
         self.stream_overlay.show_text(text)
 
@@ -1599,6 +2040,13 @@ class MainWindow(QMainWindow):
             try:
                 log("TRANSCRIBE_START", f"frames={len(audio)} elapsed={elapsed:.1f}s")
                 text = self.transcriber.transcribe(audio)
+                if not text:
+                    # распознавание вернуло пусто — берём живой текст из облачка,
+                    # чтобы надиктованное не пропало
+                    live = (self._stream_committed or "").strip()
+                    if live:
+                        text = live
+                        log("TRANSCRIBE_FALLBACK", "пустой результат — взят живой текст облачка")
                 log("TRANSCRIBE_DONE", f"text={repr(text[:80]) if text else 'EMPTY'}")
                 self.signals.transcribing_finished.emit()
                 if text:
@@ -1618,17 +2066,37 @@ class MainWindow(QMainWindow):
             self._suppress_hotkey = False
             log("TEXT_IGNORED", "диктовка была отменена — текст не вставляем")
             return
-        self._suppress_hotkey = True
-        # буфер обмена НЕ трогаем — текст печатается символами, картинки в буфере целы
-        QTimer.singleShot(100, lambda: self._do_paste(text))
+        if not self._pending_send:
+            log("TEXT_DROPPED", "сессия уже отправлена/закрыта — текст не вставляем")
+            return
+        cloud_on = (getattr(self.stream_overlay, "_enabled", True)
+                    and self.stream_overlay.isVisible())
+        if not cloud_on:
+            # режим без облачка — привычная вставка сразу после остановки
+            log("TEXT_PASTE_DIRECT", "облачко выключено — вставляем сразу")
+            self._pending_send = False
+            self._suppress_hotkey = True
+            QTimer.singleShot(100, lambda: self._do_paste(text))
+            return
+        if self._cloud_edited and self._stream_committed:
+            log("TEXT_KEPT_EDITED", "в облачке правки — финальный текст не перезаписываем")
+            return
+        # финальный точный текст — в облачко; в поле он уйдёт по следующему нажатию хоткея
+        self._stream_committed = text
+        self.stream_overlay.show_text(text)
+        self.stream_overlay.set_send_visible(True)
 
     def _do_paste(self, text):
         try:
             log("DO_PASTE", f"auto_send={self.settings.get('auto_send')}")
+            self._focus_target()   # фокус — в окно назначения (облако могло его забрать)
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
             log("DO_PASTE_DONE", "ok")
-            # текст отправлен — облачко можно убирать
+            # текст отправлен — облачко убираем, сессия закрыта
+            self._pending_send = False
+            self._cloud_edited = False
+            self._stream_committed = ""
             self.stream_overlay.hide()
             self.stream_overlay.clear_anchor()
         except Exception as e:
@@ -1689,38 +2157,15 @@ class MainWindow(QMainWindow):
         self._stop_listener()
         self._capturing_hotkey = True
         self.hotkey_btn.setText("Нажмите клавишу")
-        self.hotkey_btn.setStyleSheet("""
-            QPushButton {
-                color: #000;
-                background: #00ff88;
-                border: 1px solid #00ff88;
-                border-radius: 2px;
-                font: bold 11px 'Segoe UI';
-                padding: 1px 6px;
-            }
-        """)
+        self.hotkey_btn.setStyleSheet(self._hotkey_btn_style(True))
         start_capture(self._on_hotkey_captured)
 
     def _on_hotkey_captured(self, combo):
         self._capturing_hotkey = False
-        default_style = """
-            QPushButton {
-                color: #00ff88;
-                background: transparent;
-                border: 1px solid #00ff88;
-                border-radius: 2px;
-                font: bold 12px 'Segoe UI';
-                padding: 1px 6px;
-            }
-            QPushButton:hover {
-                color: #000000;
-                background: #00ff88;
-            }
-        """
         if combo:
             self.settings.set("hotkey", combo)
             self.hotkey_btn.setText(self._format_hotkey(combo))
-            self.hotkey_btn.setStyleSheet(default_style)
+            self.hotkey_btn.setStyleSheet(self._hotkey_btn_style())
             try:
                 import winsound
                 wav = os.path.join(get_base_dir(), "sounds", "transition_up.wav")
@@ -1732,7 +2177,7 @@ class MainWindow(QMainWindow):
         else:
             hotkey = self.settings.get("hotkey", "ctrl+win")
             self.hotkey_btn.setText(self._format_hotkey(hotkey))
-            self.hotkey_btn.setStyleSheet(default_style)
+            self.hotkey_btn.setStyleSheet(self._hotkey_btn_style())
             QTimer.singleShot(100, lambda h=hotkey: self._start_listener(h))
 
     def resizeEvent(self, event):
@@ -1778,6 +2223,21 @@ class MainWindow(QMainWindow):
             self.stop_recording()
         else:
             self.start_recording()
+
+    def _start_drag(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_off = QCursor.pos() - self.pos()
+            if not hasattr(self, "_drag_timer"):
+                self._drag_timer = QTimer(self)
+                self._drag_timer.timeout.connect(self._drag_tick)
+            self._drag_timer.start(12)
+
+    def _drag_tick(self):
+        import ctypes
+        if not (ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000):
+            self._drag_timer.stop()
+            return
+        self.move(QCursor.pos() - self._drag_off)
 
     def hide_to_tray(self):
         self.hide()
