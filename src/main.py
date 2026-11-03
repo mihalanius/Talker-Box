@@ -860,7 +860,11 @@ class MainWindow(QMainWindow):
         self.content_lay = QVBoxLayout(self.content)
         self.content_lay.setContentsMargins(16, 20, 16, 16)
         self.content_lay.setSpacing(0)
-        root.addSpacing(15)   # отступ от названия и вкладок до светлого контейнера
+        # отступ от названия и вкладок до светлого контейнера (у «Словаря» меньше)
+        self._top_gap = QWidget()
+        self._top_gap.setFixedHeight(15)
+        self._top_gap.setStyleSheet("background: transparent;")
+        root.addWidget(self._top_gap)
         root.addWidget(self.content)
         self.content.mousePressEvent = self._start_drag   # за светлый фон страниц окно тоже тянется
         self.mousePressEvent = self._start_drag            # за пустой фон окна и шапки
@@ -1067,10 +1071,14 @@ class MainWindow(QMainWindow):
                 self.content_lay.setContentsMargins(0, 0, 0, 0)
                 if getattr(self, "_root_lay", None) is not None:
                     self._root_lay.setContentsMargins(18, 16, 18, 8)   # снизу 8 px — рамка не липнет
+                if getattr(self, "_top_gap", None) is not None:
+                    self._top_gap.setFixedHeight(7)    # на 8 px выше, полоска под вкладками уже
             else:
                 self.content_lay.setContentsMargins(16, 20, 16, 16)
                 if getattr(self, "_root_lay", None) is not None:
                     self._root_lay.setContentsMargins(18, 16, 18, 16)
+                if getattr(self, "_top_gap", None) is not None:
+                    self._top_gap.setFixedHeight(15)
         except Exception:
             pass
         if which == "dict" and hasattr(self, "dict_edit"):
