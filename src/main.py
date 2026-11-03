@@ -814,7 +814,7 @@ class MainWindow(QMainWindow):
         # зазоры между вкладками задаём вручную (spacing 0), чтобы «Настройки»
         # стояли на 4 px левее остальных
         tabs.setSpacing(0)
-        tab_gaps = [0, 6, 10, 10, 10]   # зазор ПЕРЕД каждой вкладкой
+        tab_gaps = [0, 6, 16, 4, 10]   # зазор ПЕРЕД каждой вкладкой
         for b, gap in zip((self.btn_tab_main, self.btn_tab_set, self.btn_tab_dict,
                            self.btn_tab_hist, self.btn_tab_help), tab_gaps):
             if gap:
