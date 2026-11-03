@@ -892,6 +892,7 @@ class MainWindow(QMainWindow):
         self.hist_page = QWidget()
         self._build_hist_page()
         self.hist_scroll = self._scroll(self.hist_page)
+        self.hist_page.setStyleSheet("background: #d9d9d6;")
         self.content_lay.addWidget(self.hist_scroll)
         self.hist_scroll.hide()
 
@@ -1018,16 +1019,98 @@ class MainWindow(QMainWindow):
 
     def _build_hist_page(self):
         lay = QVBoxLayout(self.hist_page)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
-        title = QLabel("История")
-        title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
-        lay.addWidget(title)
-        text = QLabel("История распознавания появится в следующей версии.")
-        text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        text.setWordWrap(True)
-        lay.addWidget(text)
-        lay.addStretch()
+        # контейнер как на «Словаре»: бирка на линии, внутри — весь текст истории
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        box = GroupBox("История", active=False, inner=True)
+
+        btn_clear = QPushButton("Очистить")
+        btn_clear.setFixedHeight(24)
+        btn_clear.clicked.connect(self._clear_history)
+        box.set_corner_widget(btn_clear)
+
+        self.hist_edit = QTextEdit()
+        self.hist_edit.setReadOnly(True)      # историю читаем и выделяем, но не правим
+        self.hist_edit.setAcceptRichText(False)
+        self.hist_edit.setMinimumHeight(60)
+        self.hist_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.hist_edit.setStyleSheet(
+            "QTextEdit { background: #ffffff; color: #1c1c1c; border: 1px solid #dcdcd8;"
+            " border-radius: 8px; padding: 6px; font: 11px 'Consolas'; }"
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }"
+            "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+        self.hist_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.hist_edit.customContextMenuRequested.connect(self._hist_context_menu)
+        box.add(self.hist_edit, 1)
+        lay.addWidget(box, 1)
+
+    # ---------- история распознавания ----------
+
+    def _history_path(self):
+        return os.path.join(get_exe_dir(), "history.txt")
+
+    def _append_history(self, text):
+        """Дописать сеанс распознавания в файл истории (дата + текст)."""
+        try:
+            text = (text or "").strip()
+            if not text:
+                return
+            stamp = time.strftime("%d.%m.%Y %H:%M")
+            with open(self._history_path(), "a", encoding="utf-8") as f:
+                f.write("[%s] %s\n" % (stamp, text))
+            if getattr(self, "hist_scroll", None) is not None and self.hist_scroll.isVisible():
+                self._refresh_history()
+        except Exception as e:
+            log("HISTORY_APPEND_ERROR", str(e))
+
+    def _refresh_history(self):
+        """Перечитать файл истории в поле (если текст не изменился — ничего не делаем)."""
+        try:
+            path = self._history_path()
+            txt = ""
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8-sig") as f:
+                    txt = f.read()
+            if self.hist_edit.toPlainText() == txt:
+                return
+            self.hist_edit.setPlainText(txt)
+            cur = self.hist_edit.textCursor()
+            cur.movePosition(cur.MoveOperation.End)   # показываем последние записи
+            self.hist_edit.setTextCursor(cur)
+            self.hist_edit.ensureCursorVisible()
+        except Exception as e:
+            log("HISTORY_LOAD_ERROR", str(e))
+
+    def _clear_history(self):
+        """Очистить историю распознавания (файл и поле)."""
+        try:
+            path = self._history_path()
+            if os.path.exists(path):
+                os.remove(path)
+            self.hist_edit.clear()
+            log("HISTORY_CLEARED", path)
+        except Exception as e:
+            log("HISTORY_CLEAR_ERROR", str(e))
+
+    def _hist_context_menu(self, pos):
+        """ПКМ по истории: выделенное слово → «Добавить в словарь», как в облачке."""
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
+            " padding: 4px; font-size: 12px; }"
+            "QMenu::item:selected { background: #d6f5e8; }")
+        selected = (self.hist_edit.textCursor().selectedText() or "").strip()
+        act_add = menu.addAction("Добавить в словарь…")
+        act_add.setEnabled(bool(selected))
+        act_copy = menu.addAction("Скопировать выделенное")
+        act_copy.setEnabled(bool(selected))
+        action = menu.exec(self.hist_edit.mapToGlobal(pos))
+        if action is act_add:
+            self._on_add_word_request(selected)
+        elif action is act_copy:
+            QApplication.clipboard().setText(selected)
 
     def _build_help_page(self):
         lay = QVBoxLayout(self.help_page)
@@ -1071,9 +1154,10 @@ class MainWindow(QMainWindow):
             b.setChecked(key == which)
         # отступы применяем ТОЛЬКО при реальном изменении: переустановка отступов
         # и стилей заставляет Qt заново пересчитывать дерево и тормозит переключение
-        layout = {"dict": ((0, 0, 0, 0), (18, 16, 18, 16), 7),
+        compact = which in ("dict", "hist")
+        layout = {"compact": ((0, 0, 0, 0), (18, 16, 18, 16), 7),
                   "other": ((16, 20, 16, 16), (18, 16, 18, 16), 15)}[
-                      "dict" if which == "dict" else "other"]
+                      "compact" if compact else "other"]
         margins, root_margins, top_gap = layout
         try:
             if getattr(self, "_applied_layout", None) != layout:
@@ -1087,6 +1171,8 @@ class MainWindow(QMainWindow):
             pass
         if which == "dict" and hasattr(self, "dict_edit"):
             self._refresh_dict_text()   # показать актуальное содержимое файла словаря
+        if which == "hist" and hasattr(self, "hist_edit"):
+            self._refresh_history()     # показать все сеансы распознавания
 
     # ---------- вкладка «Настройки» — макет dashboard_v3 ----------
 
@@ -2452,6 +2538,7 @@ class MainWindow(QMainWindow):
             is_terminal = _is_terminal()
             _paste_via_sendinput(text, auto_send=self.settings.get("auto_send"), is_terminal=is_terminal)
             log("DO_PASTE_DONE", "ok")
+            self._append_history(text)   # каждый сеанс распознавания — в историю
             # текст отправлен — облачко убираем, сессия закрыта
             self._pending_send = False
             self._cloud_edited = False

@@ -24,3 +24,5 @@ dbg_*.txt
 hotwords_cache.txt
 icons_backup/
 talkerbox.log
+# история распознавания (рабочие данные)
+history.txt
