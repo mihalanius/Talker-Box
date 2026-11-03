@@ -811,8 +811,14 @@ class MainWindow(QMainWindow):
         self.btn_tab_dict.clicked.connect(lambda: self._show_tab("dict"))
         self.btn_tab_hist.clicked.connect(lambda: self._show_tab("hist"))
         self.btn_tab_help.clicked.connect(lambda: self._show_tab("help"))
-        for b in (self.btn_tab_main, self.btn_tab_set, self.btn_tab_dict,
-                  self.btn_tab_hist, self.btn_tab_help):
+        # зазоры между вкладками задаём вручную (spacing 0), чтобы «Настройки»
+        # стояли на 4 px левее остальных
+        tabs.setSpacing(0)
+        tab_gaps = [0, 6, 10, 10, 10]   # зазор ПЕРЕД каждой вкладкой
+        for b, gap in zip((self.btn_tab_main, self.btn_tab_set, self.btn_tab_dict,
+                           self.btn_tab_hist, self.btn_tab_help), tab_gaps):
+            if gap:
+                tabs.addSpacing(gap)
             tabs.addWidget(b)
         tabs.addStretch()
         tabs.setContentsMargins(3, 0, 0, 0)   # блок вкладок сдвинут влево на 15 px
