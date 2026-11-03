@@ -865,12 +865,23 @@ class MainWindow(QMainWindow):
 
     def _build_dict_page(self):
         lay = QVBoxLayout(self.dict_page)
-        # заголовок и подсказка — к самому верху, чтобы осталось больше места под текст
-        lay.setContentsMargins(16, 2, 16, 8)
+        # всё компактно к верху: заголовок с кнопкой в одну строку, подсказка под ним,
+        # остальное место — под сам текст словаря
+        lay.setContentsMargins(16, 2, 16, 6)
         lay.setSpacing(3)
+
+        top = QHBoxLayout()
+        top.setSpacing(8)
         title = QLabel("Словарь")
         title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
-        lay.addWidget(title)
+        top.addWidget(title)
+        top.addStretch(1)
+        btn = QPushButton("Открыть папку словаря")
+        btn.setFixedHeight(24)
+        btn.clicked.connect(self._open_vocabulary_folder)
+        top.addWidget(btn)            # кнопка — в правом верхнем углу, рядом с заголовком
+        lay.addLayout(top)
+
         text = QLabel(
             "Формат строки: Правильное слово - неправильный1, неправильный2.\n"
             "Строки с # — комментарии. Правки сохраняются сами.")
@@ -893,17 +904,10 @@ class MainWindow(QMainWindow):
         self.dict_edit.textChanged.connect(self._on_dict_text_changed)
         lay.addWidget(self.dict_edit, 1)
 
-        row = QHBoxLayout()
-        row.setSpacing(8)
+        # строка статуса убрана с экрана (место отдано тексту), но логика её пишет —
+        # виджет живёт без родителя и просто нигде не показывается
         self.dict_status = QLabel("")
-        self.dict_status.setStyleSheet(
-            "color: #2e8b75; font: 10px 'Segoe UI'; background: transparent; border: none;")
-        row.addWidget(self.dict_status, 1)
-        btn = QPushButton("Открыть папку словаря")
-        btn.setFixedHeight(24)
-        btn.clicked.connect(self._open_vocabulary_folder)
-        row.addWidget(btn)
-        lay.addLayout(row)
+        self.dict_status.setVisible(False)
 
     # ---------- словарь: чтение / автосохранение файла ----------
 
