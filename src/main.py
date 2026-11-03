@@ -865,29 +865,19 @@ class MainWindow(QMainWindow):
 
     def _build_dict_page(self):
         lay = QVBoxLayout(self.dict_page)
-        # всё компактно к верху: заголовок с кнопкой в одну строку, подсказка под ним,
-        # остальное место — под сам текст словаря
+        # ни заголовка, ни подсказки: всё место отдано тексту словаря,
+        # сверху справа — только кнопка «Открыть папку словаря»
         lay.setContentsMargins(16, 2, 16, 6)
         lay.setSpacing(3)
 
         top = QHBoxLayout()
         top.setSpacing(8)
-        title = QLabel("Словарь")
-        title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
-        top.addWidget(title)
         top.addStretch(1)
         btn = QPushButton("Открыть папку словаря")
         btn.setFixedHeight(24)
         btn.clicked.connect(self._open_vocabulary_folder)
-        top.addWidget(btn)            # кнопка — в правом верхнем углу, рядом с заголовком
+        top.addWidget(btn)
         lay.addLayout(top)
-
-        text = QLabel(
-            "Формат строки: Правильное слово - неправильный1, неправильный2.\n"
-            "Строки с # — комментарии. Правки сохраняются сами.")
-        text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
-        text.setWordWrap(True)
-        lay.addWidget(text)
 
         # живой редактор файла словаря: тянется на всё свободное место,
         # прокрутка — только внутри поля, у самой страницы скролла нет
