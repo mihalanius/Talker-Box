@@ -1722,6 +1722,7 @@ class MainWindow(QMainWindow):
             self._cloud_edited = False
             self._cloud_touched = False    # новая диктовка — облачко ещё не трогали
             self._keep_for_edit = False
+            self._session_fixes = []       # правки словаря, сделанные по ходу этой диктовки
             self.stream_overlay.capture_anchor()   # облачко закрепляется у поля ввода
             self.stream_overlay.set_send_visible(True)   # кнопка «Отправить» — на время диктовки
             self._set_esc(True)    # Escape отменяет диктовку, как крестик
@@ -1926,6 +1927,26 @@ class MainWindow(QMainWindow):
                 self._cloud_edited = True   # правки в облачке — финальный ASR их не затрёт
         except Exception:
             pass
+        # запоминаем правку на всю диктовку: применяется и к финальному тексту ASR
+        try:
+            if not hasattr(self, "_session_fixes"):
+                self._session_fixes = []
+            self._session_fixes.append((wrong, target))
+        except Exception:
+            pass
+
+    def _apply_session_fixes(self, text):
+        """Применить к тексту правки словаря, сделанные по ходу диктовки."""
+        import re
+        for wrong, target in list(getattr(self, "_session_fixes", []) or []):
+            if not wrong or not target or wrong == target:
+                continue
+            try:
+                text = re.sub(r"(?<!\w)" + re.escape(wrong) + r"(?!\w)",
+                              target, text, flags=re.IGNORECASE)
+            except Exception:
+                continue
+        return text
 
     def stop_recording(self):
         if self.is_recording:
@@ -1938,15 +1959,15 @@ class MainWindow(QMainWindow):
             duration = frames / 16000 if frames > 0 else 0
             log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
             self.is_recording = False
-            # трогали облачко мышкой (выделяли слово / правили словарь) — текст
-            # остаётся для правок; не трогали — отправим сразу, как раньше
-            self._keep_for_edit = bool(self._cloud_touched or self._cloud_mouse_selected())
-            log("STOP_KEEP", f"keep={self._keep_for_edit} touched={self._cloud_touched}")
-            self._pending_send = self._keep_for_edit
+            # ждущего режима нет: остановка всегда отправляет текст сама,
+            # правки, сделанные по ходу диктовки, подхватятся при вставке
+            self._keep_for_edit = False
+            self._pending_send = False
+            log("STOP_SEND", f"touched={self._cloud_touched} edited={self._cloud_edited}")
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
-            self.stream_overlay.set_send_visible(self._keep_for_edit)
+            self.stream_overlay.set_send_visible(False)
             play_stop_sound()
             self.signals.transcribing_started.emit()
             threading.Thread(target=self.transcribe_audio, args=(audio,), daemon=True).start()
@@ -2223,30 +2244,22 @@ class MainWindow(QMainWindow):
             self._suppress_hotkey = False
             log("TEXT_IGNORED", "диктовка была отменена — текст не вставляем")
             return
-        cloud_on = (getattr(self.stream_overlay, "_enabled", True)
-                    and self.stream_overlay.isVisible())
-        if not (self._keep_for_edit and cloud_on):
-            # облачко не трогали мышкой (или оно выключено) — вставляем сразу,
-            # без пауз, как в старой версии
-            log("TEXT_PASTE_DIRECT", "текст не ждём — вставляем сразу после остановки")
-            self._pending_send = False
-            self._suppress_hotkey = True
-            QTimer.singleShot(100, lambda: self._do_paste(text))
-            return
-        if not self._pending_send:
-            log("TEXT_DROPPED", "сессия уже отправлена/закрыта — текст не вставляем")
-            return
-        if self._cloud_edited and self._stream_committed:
-            log("TEXT_KEPT_EDITED", "в облачке правки — финальный текст не перезаписываем")
-            return
-        # текст ждёт правок: показываем финальный вариант, отправится по хоткею
-        self._stream_committed = text
-        self.stream_overlay.show_text(text)
-        self.stream_overlay.set_send_visible(True)
-        self._set_esc(True)    # пока текст в облачке, Escape его убирает
+        # правки словаря, сделанные по ходу диктовки, применяем к финальному тексту
+        text = self._apply_session_fixes(text)
+        # правки по ходу диктовки (словарь/замена слова) главнее сырого ASR
+        if self._cloud_edited and (self._stream_committed or "").strip():
+            log("TEXT_USE_EDITED", "отправляем текст с правками из облачка")
+            text = self._stream_committed
+        # остановка всегда отправляет сразу: без ожидания и без пауз
+        log("TEXT_PASTE_DIRECT", "вставляем сразу после остановки")
+        self._pending_send = False
+        self._suppress_hotkey = True
+        QTimer.singleShot(100, lambda: self._do_paste(text))
 
     def _do_paste(self, text):
         try:
+            # цель освежаем перед вставкой: активное чужое окно, иначе последнее рабочее
+            self._target_hwnd = self._resolve_target()
             log("DO_PASTE", f"auto_send={self.settings.get('auto_send')} "
                             f"target={self._hwnd_desc(getattr(self, '_target_hwnd', 0))} "
                             f"fg={self._hwnd_desc(self._foreground_hwnd())}")
