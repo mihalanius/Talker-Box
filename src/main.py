@@ -1069,12 +1069,21 @@ class MainWindow(QMainWindow):
         try:
             if which == "dict":
                 self.content_lay.setContentsMargins(0, 0, 0, 0)
+                # фон страницы = фону окна: полоска над контейнером не выделяется
+                try:
+                    self.content.setStyleSheet("#content { background: #d9d9d6; border-radius: 12px; }")
+                except Exception:
+                    pass
                 if getattr(self, "_root_lay", None) is not None:
                     self._root_lay.setContentsMargins(18, 16, 18, 8)   # снизу 8 px — рамка не липнет
                 if getattr(self, "_top_gap", None) is not None:
                     self._top_gap.setFixedHeight(7)    # на 8 px выше, полоска под вкладками уже
             else:
                 self.content_lay.setContentsMargins(16, 20, 16, 16)
+                try:
+                    self.content.setStyleSheet("#content { background: #cfcfcc; border-radius: 12px; }")
+                except Exception:
+                    pass
                 if getattr(self, "_root_lay", None) is not None:
                     self._root_lay.setContentsMargins(18, 16, 18, 16)
                 if getattr(self, "_top_gap", None) is not None:
