@@ -18,3 +18,9 @@ build/
 *~
 models/GigaAM/
 src/models/
+# рабочий мусор разработки
+*.lnk
+dbg_*.txt
+hotwords_cache.txt
+icons_backup/
+talkerbox.log
