@@ -871,7 +871,7 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(self.dict_page)
         # контейнер как на вкладке «Главная»: бирка на рамке + светлый внутренний блок,
         # внутри — кнопка папки и текст словаря на всё оставшееся место
-        lay.setContentsMargins(4, 9, 4, 4)
+        lay.setContentsMargins(0, 6, 0, 0)
         lay.setSpacing(0)
 
         box = GroupBox("Словарь", active=False, inner=True)
@@ -1027,6 +1027,15 @@ class MainWindow(QMainWindow):
             sc.setVisible(key == which)
         for key, b in buttons.items():
             b.setChecked(key == which)
+        # у «Словаря» контейнер занимает всю вкладку: внешние отступы убираем,
+        # чтобы поля вокруг блока были как внутри (14 px), а не двойные
+        try:
+            if which == "dict":
+                self.content_lay.setContentsMargins(0, 0, 0, 0)
+            else:
+                self.content_lay.setContentsMargins(16, 20, 16, 16)
+        except Exception:
+            pass
         if which == "dict" and hasattr(self, "dict_edit"):
             self._refresh_dict_text()   # показать актуальное содержимое файла словаря
 
