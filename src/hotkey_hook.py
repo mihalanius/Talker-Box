@@ -143,6 +143,14 @@ class HotkeyListener:
                 elif is_up:
                     pressed.discard(vk)
 
+                # диагностика: видит ли хук клавиши комбинации (2–4 строки на нажатие)
+                if vk in combo_keys:
+                    try:
+                        from logger import log as _log
+                        _log("HOOK_KEY", f"vk={vk} down={is_down} pressed={sorted(pressed)} was_combo={was_combo}")
+                    except Exception:
+                        pass
+
                 all_mods_pressed = all(
                     any(v in pressed for v in MODIFIER_ALIASES.get(m, {m}))
                     for m in self._modifiers
@@ -152,7 +160,19 @@ class HotkeyListener:
                 combo_pressed = all_mods_pressed and main_in_combo
 
                 if was_combo and is_down:
-                    return 1
+                    # защита от рассинхрона: если клавиши комбинации физически отпущены,
+                    # а состояние «зажато» осталось — сбрасываем, иначе хоткей замолкает
+                    physically_held = any(
+                        user32.GetAsyncKeyState(v) & 0x8000 for v in combo_keys)
+                    if physically_held:
+                        return 1
+                    pressed.clear()
+                    was_combo = False
+                    try:
+                        from logger import log as _log
+                        _log("HOOK_RESYNC", "состояние комбинации сброшено (рассинхрон)")
+                    except Exception:
+                        pass
 
                 if combo_pressed and not was_combo:
                     was_combo = True

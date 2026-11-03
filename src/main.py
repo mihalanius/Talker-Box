@@ -639,6 +639,10 @@ class MainWindow(QMainWindow):
         self._stream_epoch = 0      # поколение сессии: гасит запоздалый текст после сброса
         self._pending_send = False  # облачко держит готовый текст: следующий хоткей его ОТПРАВИТ
         self._cloud_edited = False  # текст в облачке правили руками — финальный ASR его не затирает
+        # автоотправка: после остановки текст уходит сам, но любое действие с облачком её отменяет
+        self._autosend_timer = QTimer(self)
+        self._autosend_timer.setSingleShot(True)
+        self._autosend_timer.timeout.connect(self._autosend_fire)
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -1700,6 +1704,7 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         if not self.is_recording:
+            self._autosend_cancel()   # новая диктовка — автоотправка прежнего текста не нужна
             if hasattr(self, '_recording_timeout') and self._recording_timeout:
                 self._recording_timeout.stop()
                 self._recording_timeout = None
@@ -1767,6 +1772,28 @@ class MainWindow(QMainWindow):
         except Exception:
             return False
 
+    def _autosend_start(self, ms):
+        """Автоотправка: после остановки текст уходит сам через ms миллисекунд."""
+        try:
+            self._autosend_timer.start(int(ms))
+        except Exception:
+            pass
+
+    def _autosend_cancel(self):
+        """Пользователь работает с облачком — автоотправку отменяем, текст ждёт."""
+        try:
+            if self._autosend_timer.isActive():
+                log("AUTOSEND_CANCEL", "текст ждёт ручной отправки")
+            self._autosend_timer.stop()
+        except Exception:
+            pass
+
+    def _autosend_fire(self):
+        if not self._has_pending_text():
+            return
+        log("AUTOSEND", "текст отправлен автоматически после остановки")
+        self.send_pending()
+
     def _set_esc(self, on):
         """Ловить Escape (отмена распознавания) — только пока идёт сессия."""
         try:
@@ -1777,6 +1804,7 @@ class MainWindow(QMainWindow):
 
     def cancel_session(self):
         """Escape или крестик: отменить диктовку либо убрать готовый текст из облачка."""
+        self._autosend_cancel()
         if self.is_recording or getattr(self.recorder, "is_recording", False):
             log("CANCEL", "отмена диктовки (Escape/крестик)")
             self._stream_reset()
@@ -1801,6 +1829,7 @@ class MainWindow(QMainWindow):
             text = ""
         text = text or (self._stream_committed or "").strip()
         self._pending_send = False
+        self._autosend_cancel()
         if not text:
             log("SEND_PENDING", "пусто — нечего отправлять")
             self.stream_overlay.hide()
@@ -1810,26 +1839,70 @@ class MainWindow(QMainWindow):
         self._suppress_hotkey = True
         self.phrase_stream.on_phrase = None   # запоздалые куски не перерисуют облачко
         self._stream_epoch += 1               # и не вставятся после отправки
-        # цель — текущее активное окно (за время правок пользователь мог переключиться)
-        hwnd = self._foreground_hwnd()
-        if hwnd:
-            try:
-                import ctypes
-                from ctypes import wintypes
-                pid = wintypes.DWORD()
-                ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                if pid.value != os.getpid():      # свои же окна целью не берём
-                    self._target_hwnd = hwnd
-            except Exception:
-                pass
+        # цель — активное окно; если сверху наши окна (облачко/панель),
+        # ищем ближайшее чужое окно в Z-порядке
+        self._target_hwnd = self._pick_target()
+        log("SEND_TARGET", self._hwnd_desc(self._target_hwnd))
         self.recorder.stream_hook = None
         self._do_paste(text)
+
+    def _pick_target(self):
+        """Окно, в которое печатать: активное, но не наше (облачко/панель — не цель)."""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            # без явных прототипов 64-битные HWND обрезаются до int —
+            # GetWindow возвращал 0 и обход Z-порядка не работал
+            user32.GetForegroundWindow.restype = wintypes.HWND
+            user32.GetWindow.restype = wintypes.HWND
+            user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
+            user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+            user32.IsWindowVisible.argtypes = [wintypes.HWND]
+            user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+            my_pid = os.getpid()
+
+            def pid_of(h):
+                p = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(h, ctypes.byref(p))
+                return p.value
+
+            hwnd = user32.GetForegroundWindow()
+            if hwnd and pid_of(hwnd) != my_pid:
+                return int(hwnd)
+            # сверху наши окна (и они topmost) — берём первое чужое окно
+            # по Z-порядку: EnumWindows выдаёт окна сверху вниз
+            user32.IsIconic.argtypes = [wintypes.HWND]
+            order = []
+
+            def _enum(h, _l):
+                try:
+                    if not user32.IsWindowVisible(h) or pid_of(h) == my_pid:
+                        return True
+                    if user32.IsIconic(h):
+                        return True
+                    buf = ctypes.create_unicode_buffer(160)
+                    user32.GetWindowTextW(h, buf, 160)
+                    if buf.value.strip():
+                        order.append(int(h))
+                except Exception:
+                    pass
+                return True
+
+            user32.EnumWindows(ctypes.WINFUNCTYPE(
+                ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)(_enum), 0)
+            if order:
+                return order[0]
+        except Exception as e:
+            log("PICK_TARGET_ERROR", str(e))
+        return getattr(self, "_target_hwnd", 0)
 
     def _on_add_word_request(self, selected):
         """Выделенное слово из облачка → форма «Добавить в словарь»."""
         wrong = (selected or "").strip()
         if not wrong:
             return
+        self._autosend_cancel()   # пользователь правит словарь — текст не отправляем сам
         from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton
         from vocabulary.manager import VocabularyManager
 
@@ -1905,6 +1978,7 @@ class MainWindow(QMainWindow):
             log("RECORD_STOP", f"frames={frames} duration={duration:.1f}s")
             self.is_recording = False
             self._pending_send = True    # текст ждёт отправки, хоткей больше не начнёт запись
+            self._autosend_start(8000)   # страховка: если ASR сильно задержится — отправим живой текст
             self.signals.recording_stopped.emit()
             self.waveform.hide_wave()
             self.stream_overlay.set_wave_active(False)   # волна гаснет — речи больше нет
@@ -1937,6 +2011,15 @@ class MainWindow(QMainWindow):
             self._lmb_was_down = down
             if clicked and self.stream_overlay.isVisible():
                 x, y = self._cursor_xy()
+                # клик по самому облачку — пользователь с ним работает, автоотправку отменяем
+                try:
+                    dpr = self.stream_overlay.devicePixelRatioF() or 1.0
+                    g = self.stream_overlay.geometry()
+                    lx, ly = x / dpr, y / dpr
+                    if g.left() <= lx <= g.right() and g.top() <= ly <= g.bottom():
+                        self._autosend_cancel()
+                except Exception:
+                    pass
                 crect = self.stream_overlay.close_rect()
                 if crect and self._in_rect(x, y, crect):
                     self.cancel_session()   # крестик = то же, что Escape
@@ -1964,9 +2047,25 @@ class MainWindow(QMainWindow):
         """Дескриптор активного окна (куда смотрит пользователь)."""
         try:
             import ctypes
-            return ctypes.windll.user32.GetForegroundWindow()
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            user32.GetForegroundWindow.restype = wintypes.HWND
+            return int(user32.GetForegroundWindow() or 0)
         except Exception:
             return 0
+
+    @staticmethod
+    def _hwnd_desc(hwnd):
+        """Для лога: '0x1234 «Заголовок окна»'."""
+        try:
+            import ctypes
+            if not hwnd:
+                return "0"
+            buf = ctypes.create_unicode_buffer(160)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, 160)
+            return f"0x{hwnd:X} «{buf.value[:60]}»"
+        except Exception:
+            return str(hwnd)
 
     def _focus_target(self):
         """Вернуть фокус в окно назначения. True — окно активно и можно печатать.
@@ -2055,6 +2154,7 @@ class MainWindow(QMainWindow):
         self._ignore_text = True   # запоздалый текст отменённой диктовки не вставляем
         self._pending_send = False
         self._cloud_edited = False
+        self._autosend_cancel()
         self._set_esc(False)
         # буфер обмена не трогаем: он программе не нужен, а чужие картинки целы
         self.stream_overlay.set_wave_active(False)   # отмена — волна замирает
@@ -2164,10 +2264,13 @@ class MainWindow(QMainWindow):
         self.stream_overlay.show_text(text)
         self.stream_overlay.set_send_visible(True)
         self._set_esc(True)    # пока текст в облачке, Escape его убирает
+        self._autosend_start(1200)   # финальный текст готов — через секунду отправим сами
 
     def _do_paste(self, text):
         try:
-            log("DO_PASTE", f"auto_send={self.settings.get('auto_send')}")
+            log("DO_PASTE", f"auto_send={self.settings.get('auto_send')} "
+                            f"target={self._hwnd_desc(getattr(self, '_target_hwnd', 0))} "
+                            f"fg={self._hwnd_desc(self._foreground_hwnd())}")
             if not self._focus_target():
                 # фокус не вернулся — печатать некуда: текст остаётся в облачке
                 log("PASTE_NO_TARGET", "фокус не вернулся — текст оставлен в облачке")
