@@ -1832,7 +1832,7 @@ class MainWindow(QMainWindow):
             play_start_sound()
             self._recording_session = getattr(self, '_recording_session', 0) + 1
             session = self._recording_session
-            self._recording_timeout = QTimer.singleShot(300000, lambda s=session: self._on_recording_timeout(s))
+            self._recording_timeout = QTimer.singleShot(120000, lambda s=session: self._on_recording_timeout(s))
 
     def _on_recording_timeout(self, session):
         if session == getattr(self, '_recording_session', 0):
@@ -1841,7 +1841,7 @@ class MainWindow(QMainWindow):
     def _force_stop_recording(self):
         if self.is_recording:
             elapsed = time.monotonic() - getattr(self, '_recording_start_time', 0)
-            log("RECORD_TIMEOUT", f"300s limit reached (elapsed={elapsed:.1f}s)")
+            log("RECORD_TIMEOUT", f"120s limit reached (elapsed={elapsed:.1f}s)")
             self._recording_timeout = None
             self.stop_recording()
 
@@ -1902,13 +1902,13 @@ class MainWindow(QMainWindow):
         self.stream_overlay.clear_anchor()
 
     def send_pending(self):
-        """Отправить текст из облачка — ровно в том виде, в каком его оставил пользователь."""
-        text = ""
-        try:
-            text = (self.stream_overlay.label.text() or "").strip()
-        except Exception:
-            text = ""
-        text = text or (self._stream_committed or "").strip()
+        """Отправить надиктованное — полный текст, а не только видимый хвост облачка."""
+        text = (self._stream_committed or "").strip()
+        if not text:
+            try:
+                text = (self.stream_overlay.label.text() or "").strip()
+            except Exception:
+                text = ""
         self._pending_send = False
         if not text:
             log("SEND_PENDING", "пусто — нечего отправлять")
@@ -2013,12 +2013,19 @@ class MainWindow(QMainWindow):
             self._reload_vocabulary()
         except Exception as e:
             log("VOCAB_ADD_ERROR", str(e))
-        # слово исправляется сразу в тексте облачка
+        # слово исправляется в подписи облачка и во ВСЁМ тексте диктовки
+        # (в облачке виден только хвост, отправляется полный текст)
         try:
-            fixed = self.stream_overlay.replace_in_text(wrong, target)
-            if fixed:
-                self._stream_committed = fixed
-                self._cloud_edited = True   # правки в облачке — финальный ASR их не затрёт
+            self.stream_overlay.replace_in_text(wrong, target)
+        except Exception:
+            pass
+        try:
+            import re as _re
+            if self._stream_committed:
+                self._stream_committed = _re.sub(
+                    r"(?<!\w)" + _re.escape(wrong) + r"(?!\w)", target,
+                    self._stream_committed, flags=_re.IGNORECASE)
+            self._cloud_edited = True   # правки — финальный ASR их не затрёт
         except Exception:
             pass
         # запоминаем правку на всю диктовку: применяется и к финальному тексту ASR
@@ -2262,15 +2269,14 @@ class MainWindow(QMainWindow):
         if not self.is_recording:
             return   # речь остановлена — запоздалые куски не должны перебивать правки
         if partial:
-            shown = (self._stream_committed + " " + text).strip()
+            full = (self._stream_committed + " " + text).strip()
         else:
             self._stream_committed = (self._stream_committed + " " + text).strip()
-            if len(self._stream_committed) > 600:
-                self._stream_committed = self._stream_committed[-600:]
-            shown = self._stream_committed
+            # длинную диктовку НЕ обрезаем: весь текст остаётся в облачке для правок
+            full = self._stream_committed
             # пауза — пересчитываем ВСЮ диктовку целиком (точно как уйдёт в поле)
             QTimer.singleShot(350, self._refresh_session_text)
-        self.stream_overlay.show_text(shown)
+        self.stream_overlay.show_text(full)
 
     def _refresh_session_text(self):
         """Точный текст всей диктовки — тот же, что отправится в поле ввода."""
@@ -2304,7 +2310,7 @@ class MainWindow(QMainWindow):
 
     def transcribe_audio(self, audio):
         elapsed = time.monotonic() - getattr(self, '_recording_start_time', time.monotonic())
-        if elapsed > 305:   # лимит записи — 5 минут (300 с + запас)
+        if elapsed > 125:   # лимит записи — 2 минуты (120 с + запас)
             log("TRANSCRIBE_SKIP", f"stale audio from {elapsed:.1f}s ago")
             self.signals.transcribing_finished.emit()
             return
