@@ -1075,7 +1075,7 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 if getattr(self, "_root_lay", None) is not None:
-                    self._root_lay.setContentsMargins(18, 16, 18, 8)   # снизу 8 px — рамка не липнет
+                    self._root_lay.setContentsMargins(18, 16, 18, 16)   # отступ контейнера снизу 16 px
                 if getattr(self, "_top_gap", None) is not None:
                     self._top_gap.setFixedHeight(7)    # на 8 px выше, полоска под вкладками уже
             else:
