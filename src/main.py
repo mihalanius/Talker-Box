@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
                               QLineEdit, QListWidget, QFrame, QSlider, QColorDialog,
-                              QScrollArea)
+                              QScrollArea, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics, QCursor, QRadialGradient
 from recorder import Recorder
@@ -644,6 +644,13 @@ class MainWindow(QMainWindow):
         self._cloud_touched = False
         self._keep_for_edit = False
         self._last_foreign = 0      # последнее активное ЧУЖОЕ окно (куда печатать)
+        # вкладка «Словарь»: живой редактор файла + автосохранение
+        self._dict_dirty = False
+        self._dict_loading = False
+        self._dict_mgr = None
+        self._dict_save_timer = QTimer(self)
+        self._dict_save_timer.setSingleShot(True)
+        self._dict_save_timer.timeout.connect(self._save_dict_text)
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -856,23 +863,108 @@ class MainWindow(QMainWindow):
 
     def _build_dict_page(self):
         lay = QVBoxLayout(self.dict_page)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.setSpacing(8)
         title = QLabel("Словарь")
         title.setStyleSheet("color: #000; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
         lay.addWidget(title)
         text = QLabel(
-            "Слова, которые модель распознаёт неправильно, задаются текстовыми файлами в папке словарей.\n"
             "Формат строки: Правильное слово - неправильный1, неправильный2.\n"
-            "Строки с # — комментарии. Слова из облачка (ПКМ → «Добавить в словарь») дописываются сюда же.")
+            "Строки с # — комментарии. Правки сохраняются сами, файл читается сразу.")
         text.setStyleSheet("color: #222; font: 11px 'Segoe UI'; background: transparent; border: none;")
         text.setWordWrap(True)
         lay.addWidget(text)
+
+        # живой редактор файла словаря: текст в поле, правки автосохраняются
+        self.dict_edit = QTextEdit()
+        self.dict_edit.setAcceptRichText(False)
+        self.dict_edit.setFixedHeight(168)   # высота фиксирована — длинное листается внутри
+        self.dict_edit.setStyleSheet(
+            "QTextEdit { background: #f7f7f5; color: #1c1c1c; border: 1px solid #dcdcd8;"
+            " border-radius: 8px; padding: 6px; font: 11px 'Consolas'; }"
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }"
+            "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+        self.dict_edit.textChanged.connect(self._on_dict_text_changed)
+        lay.addWidget(self.dict_edit)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.dict_status = QLabel("")
+        self.dict_status.setStyleSheet(
+            "color: #2e8b75; font: 10px 'Segoe UI'; background: transparent; border: none;")
+        row.addWidget(self.dict_status, 1)
         btn = QPushButton("Открыть папку словаря")
-        btn.setFixedHeight(27)
+        btn.setFixedHeight(24)
         btn.clicked.connect(self._open_vocabulary_folder)
-        lay.addWidget(btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        row.addWidget(btn)
+        lay.addLayout(row)
         lay.addStretch()
+
+    # ---------- словарь: чтение / автосохранение файла ----------
+
+    def _dict_manager(self):
+        """Менеджер словаря — тот же, что у распознавания (или отдельный экземпляр)."""
+        try:
+            if self.transcriber is not None and getattr(self.transcriber, "vocabulary", None) is not None:
+                return self.transcriber.vocabulary
+        except Exception:
+            pass
+        if getattr(self, "_dict_mgr", None) is None:
+            from vocabulary.manager import VocabularyManager
+            self._dict_mgr = VocabularyManager()
+        return self._dict_mgr
+
+    def _dict_file_path(self):
+        try:
+            return self._dict_manager().text_path
+        except Exception:
+            return os.path.join(get_exe_dir(), "vocabularies", "Словарь.txt")
+
+    def _refresh_dict_text(self):
+        """Показать содержимое файла словаря в поле (не затирая несохранённые правки)."""
+        if getattr(self, "_dict_dirty", False):
+            return
+        path = self._dict_file_path()
+        txt = ""
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8-sig") as f:   # BOM от блокнота не мешает
+                    txt = f.read()
+        except Exception as e:
+            log("DICT_LOAD_ERROR", str(e))
+        try:
+            self._dict_loading = True
+            self.dict_edit.setPlainText(txt)
+            self._dict_loading = False
+            self.dict_status.setText("%s · %d строк" % (os.path.basename(path), len(txt.splitlines())))
+        except Exception as e:
+            log("DICT_LOAD_ERROR", str(e))
+
+    def _on_dict_text_changed(self):
+        if getattr(self, "_dict_loading", False):
+            return
+        self._dict_dirty = True
+        try:
+            self.dict_status.setText("Сохранение…")
+            self._dict_save_timer.start(600)
+        except Exception:
+            self._save_dict_text()
+
+    def _save_dict_text(self):
+        """Записать текст из поля в файл словаря (без перезагрузки модели)."""
+        try:
+            path = self._dict_file_path()
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.dict_edit.toPlainText())
+            self._dict_dirty = False
+            self.dict_status.setText("%s · сохранено %s" % (
+                os.path.basename(path), time.strftime("%H:%M:%S")))
+            log("DICT_SAVED", f"{path} lines={len(self.dict_edit.toPlainText().splitlines())}")
+        except Exception as e:
+            self.dict_status.setText("Ошибка сохранения")
+            log("DICT_SAVE_ERROR", str(e))
 
     def _build_hist_page(self):
         lay = QVBoxLayout(self.hist_page)
@@ -927,6 +1019,8 @@ class MainWindow(QMainWindow):
             sc.setVisible(key == which)
         for key, b in buttons.items():
             b.setChecked(key == which)
+        if which == "dict" and hasattr(self, "dict_edit"):
+            self._refresh_dict_text()   # показать актуальное содержимое файла словаря
 
     # ---------- вкладка «Настройки» — макет dashboard_v3 ----------
 
