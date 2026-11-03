@@ -152,6 +152,10 @@ class GroupBox(QWidget):
     def set_content(self, content):
         (self._inner_lay if self._inner is not None else self._frame_lay).addWidget(content)
 
+    def add(self, widget, stretch=0):
+        """Добавить виджет в блок (с растяжением — чтобы занимал свободное место)."""
+        (self._inner_lay if self._inner is not None else self._frame_lay).addWidget(widget, stretch)
+
     def set_active(self, active):
         self._active = bool(active)
         border = "#00914a" if active else "#dcdcd8"
@@ -865,19 +869,24 @@ class MainWindow(QMainWindow):
 
     def _build_dict_page(self):
         lay = QVBoxLayout(self.dict_page)
-        # ни заголовка, ни подсказки: всё место отдано тексту словаря,
-        # сверху справа — только кнопка «Открыть папку словаря»
-        lay.setContentsMargins(16, 2, 16, 6)
-        lay.setSpacing(3)
+        # контейнер как на вкладке «Главная»: бирка на рамке + светлый внутренний блок,
+        # внутри — кнопка папки и текст словаря на всё оставшееся место
+        lay.setContentsMargins(14, 10, 14, 8)
+        lay.setSpacing(0)
 
-        top = QHBoxLayout()
-        top.setSpacing(8)
-        top.addStretch(1)
+        box = GroupBox("Словарь", active=False, inner=True)
+
+        top = QWidget()
+        top.setStyleSheet("background: transparent;")
+        top_lay = QHBoxLayout(top)
+        top_lay.setContentsMargins(0, 0, 0, 6)
+        top_lay.setSpacing(8)
+        top_lay.addStretch(1)
         btn = QPushButton("Открыть папку словаря")
         btn.setFixedHeight(24)
         btn.clicked.connect(self._open_vocabulary_folder)
-        top.addWidget(btn)
-        lay.addLayout(top)
+        top_lay.addWidget(btn)
+        box.add(top)
 
         # живой редактор файла словаря: тянется на всё свободное место,
         # прокрутка — только внутри поля, у самой страницы скролла нет
@@ -886,13 +895,14 @@ class MainWindow(QMainWindow):
         self.dict_edit.setMinimumHeight(60)
         self.dict_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.dict_edit.setStyleSheet(
-            "QTextEdit { background: #f7f7f5; color: #1c1c1c; border: 1px solid #dcdcd8;"
+            "QTextEdit { background: #ffffff; color: #1c1c1c; border: 1px solid #dcdcd8;"
             " border-radius: 8px; padding: 6px; font: 11px 'Consolas'; }"
             "QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }"
             "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.dict_edit.textChanged.connect(self._on_dict_text_changed)
-        lay.addWidget(self.dict_edit, 1)
+        box.add(self.dict_edit, 1)
+        lay.addWidget(box, 1)
 
         # строка статуса убрана с экрана (место отдано тексту), но логика её пишет —
         # виджет живёт без родителя и просто нигде не показывается
