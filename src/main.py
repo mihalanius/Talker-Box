@@ -643,6 +643,7 @@ class MainWindow(QMainWindow):
         # иначе остановка отправляет его сразу, как раньше
         self._cloud_touched = False
         self._keep_for_edit = False
+        self._last_foreign = 0      # последнее активное ЧУЖОЕ окно (куда печатать)
         self._hotkey_listener = None
 
         self.signals.text_ready.connect(self.on_text_ready)
@@ -1709,7 +1710,7 @@ class MainWindow(QMainWindow):
                 self._recording_timeout = None
             log("RECORD_START", f"mode={self.settings.get('mode')}")
             self.is_recording = True
-            self._target_hwnd = self._foreground_hwnd()   # окно, куда уйдёт текст
+            self._target_hwnd = self._last_foreign or self._foreground_hwnd()   # окно, куда уйдёт текст
             self._recording_start_time = time.monotonic()
             self.phrase_stream.transcriber = self.transcriber
             self.phrase_stream.start()
@@ -1823,63 +1824,41 @@ class MainWindow(QMainWindow):
         self._suppress_hotkey = True
         self.phrase_stream.on_phrase = None   # запоздалые куски не перерисуют облачко
         self._stream_epoch += 1               # и не вставятся после отправки
-        # цель — активное окно; если сверху наши окна (облачко/панель),
-        # ищем ближайшее чужое окно в Z-порядке
-        self._target_hwnd = self._pick_target()
+        # цель: активное чужое окно; если сверху наши (облачко/панель) —
+        # последнее чужое окно, в котором пользователь реально работал
+        self._target_hwnd = self._resolve_target()
         log("SEND_TARGET", self._hwnd_desc(self._target_hwnd))
         self.recorder.stream_hook = None
         self._do_paste(text)
 
-    def _pick_target(self):
-        """Окно, в которое печатать: активное, но не наше (облачко/панель — не цель)."""
+    @staticmethod
+    def _is_foreign(hwnd):
+        """Окно принадлежит другому процессу (не Talker Box)?"""
         try:
             import ctypes
             from ctypes import wintypes
-            user32 = ctypes.windll.user32
-            # без явных прототипов 64-битные HWND обрезаются до int —
-            # GetWindow возвращал 0 и обход Z-порядка не работал
-            user32.GetForegroundWindow.restype = wintypes.HWND
-            user32.GetWindow.restype = wintypes.HWND
-            user32.GetWindow.argtypes = [wintypes.HWND, ctypes.c_uint]
-            user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
-            user32.IsWindowVisible.argtypes = [wintypes.HWND]
-            user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
-            my_pid = os.getpid()
+            pid = wintypes.DWORD()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            return pid.value not in (0, os.getpid())
+        except Exception:
+            return False
 
-            def pid_of(h):
-                p = wintypes.DWORD()
-                user32.GetWindowThreadProcessId(h, ctypes.byref(p))
-                return p.value
+    def _update_last_foreign(self):
+        """Запомнить последнее активное чужое окно — это цель для вставки."""
+        try:
+            hwnd = self._foreground_hwnd()
+            if hwnd and self._is_foreign(hwnd):
+                self._last_foreign = hwnd
+        except Exception:
+            pass
 
-            hwnd = user32.GetForegroundWindow()
-            if hwnd and pid_of(hwnd) != my_pid:
-                return int(hwnd)
-            # сверху наши окна (и они topmost) — берём первое чужое окно
-            # по Z-порядку: EnumWindows выдаёт окна сверху вниз
-            user32.IsIconic.argtypes = [wintypes.HWND]
-            order = []
-
-            def _enum(h, _l):
-                try:
-                    if not user32.IsWindowVisible(h) or pid_of(h) == my_pid:
-                        return True
-                    if user32.IsIconic(h):
-                        return True
-                    buf = ctypes.create_unicode_buffer(160)
-                    user32.GetWindowTextW(h, buf, 160)
-                    if buf.value.strip():
-                        order.append(int(h))
-                except Exception:
-                    pass
-                return True
-
-            user32.EnumWindows(ctypes.WINFUNCTYPE(
-                ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)(_enum), 0)
-            if order:
-                return order[0]
-        except Exception as e:
-            log("PICK_TARGET_ERROR", str(e))
-        return getattr(self, "_target_hwnd", 0)
+    def _resolve_target(self):
+        """Куда печатать: текущее чужое окно, иначе последнее чужое."""
+        fg = self._foreground_hwnd()
+        if fg and self._is_foreign(fg):
+            self._last_foreign = fg
+            return fg
+        return self._last_foreign or getattr(self, "_target_hwnd", 0)
 
     def _on_add_word_request(self, selected):
         """Выделенное слово из облачка → форма «Добавить в словарь»."""
@@ -1977,6 +1956,7 @@ class MainWindow(QMainWindow):
         try:
             import ctypes
             user32 = ctypes.windll.user32
+            self._update_last_foreign()   # запоминаем окно, в котором работает пользователь
 
             # таймер диктовки и волна в облачке
             if self.recorder.is_recording:
