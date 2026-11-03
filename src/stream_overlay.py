@@ -321,6 +321,7 @@ def _focus_rect():
 
 class StreamOverlay(QWidget):
     add_word_requested = pyqtSignal(str)   # выделенное слово → «Добавить в словарь»
+    close_requested = pyqtSignal()         # «Закрыть» в меню = отмена сессии
 
     def __init__(self):
         super().__init__(None,
@@ -635,8 +636,7 @@ class StreamOverlay(QWidget):
         elif action is act_copy:
             QApplication.clipboard().setText(self.label.text())
         elif action is act_close:
-            self.hide()
-            self.clear_anchor()
+            self.close_requested.emit()   # отмена сессии — как Escape и крестик
 
     def replace_in_text(self, wrong, target):
         """Исправить слово в показанном тексте (после добавления в словарь)."""

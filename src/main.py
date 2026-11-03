@@ -613,6 +613,7 @@ class MainWindow(QMainWindow):
         self.stream_overlay = StreamOverlay()
         self.stream_overlay.send_button.clicked.connect(self._on_send_click)   # «Отправить» = второй жм хоткея
         self.stream_overlay.add_word_requested.connect(self._on_add_word_request)   # ПКМ → словарь
+        self.stream_overlay.close_requested.connect(self.cancel_session)            # «Закрыть» = отмена
         # стиль облачка из настроек — сразу при старте (таймер и «Отправить» считаются от шрифта текста)
         self.stream_overlay.apply_style(
             self.settings.get("cloud_bg", "#ececec"),
@@ -1640,8 +1641,10 @@ class MainWindow(QMainWindow):
                 hotkey,
                 on_down=lambda: self._hotkey_signal.emit("DOWN"),
                 on_up=lambda: self._hotkey_signal.emit("UP"),
+                on_escape=lambda: self._hotkey_signal.emit("ESC"),
             )
             self._hotkey_listener.start()
+            self._set_esc(self.is_recording or self._has_pending_text())
             print(f"Hotkey listener: {hotkey}")
         except Exception as e:
             print(f"Listener error: {e}")
@@ -1657,6 +1660,9 @@ class MainWindow(QMainWindow):
         self._start_listener(hotkey)
 
     def _on_hotkey_event(self, event):
+        if event == "ESC":
+            self.cancel_session()      # Escape = крестик в облачке (отмена диктовки/текста)
+            return
         if self._suppress_hotkey:
             log("HOTKEY_SUPPRESSED", event)
             return
@@ -1711,6 +1717,7 @@ class MainWindow(QMainWindow):
             self._cloud_edited = False
             self.stream_overlay.capture_anchor()   # облачко закрепляется у поля ввода
             self.stream_overlay.set_send_visible(True)   # кнопка «Отправить» — на время диктовки
+            self._set_esc(True)    # Escape отменяет диктовку, как крестик
             self.recorder.stream_hook = self.phrase_stream.feed
             self.recorder.start()
             self._ignore_text = False   # новая диктовка — её текст вставлять можно
@@ -1759,6 +1766,31 @@ class MainWindow(QMainWindow):
             return bool((self.stream_overlay.label.text() or "").strip())
         except Exception:
             return False
+
+    def _set_esc(self, on):
+        """Ловить Escape (отмена распознавания) — только пока идёт сессия."""
+        try:
+            if self._hotkey_listener:
+                self._hotkey_listener.esc_enabled = bool(on)
+        except Exception:
+            pass
+
+    def cancel_session(self):
+        """Escape или крестик: отменить диктовку либо убрать готовый текст из облачка."""
+        if self.is_recording or getattr(self.recorder, "is_recording", False):
+            log("CANCEL", "отмена диктовки (Escape/крестик)")
+            self._stream_reset()
+            return
+        if not self.stream_overlay.isVisible():
+            self._set_esc(False)
+            return
+        log("CANCEL", "убрать текст из облачка (Escape/крестик)")
+        self._pending_send = False
+        self._cloud_edited = False
+        self._stream_committed = ""
+        self._set_esc(False)
+        self.stream_overlay.hide()
+        self.stream_overlay.clear_anchor()
 
     def send_pending(self):
         """Отправить текст из облачка — ровно в том виде, в каком его оставил пользователь."""
@@ -1834,7 +1866,10 @@ class MainWindow(QMainWindow):
         cancel_btn.clicked.connect(dlg.reject)
         right_edit.setFocus()
 
-        if not dlg.exec():
+        self._set_esc(False)      # в диалоге Escape закрывает диалог, а не сессию
+        accepted = dlg.exec()
+        self._set_esc(self.is_recording or self._has_pending_text())
+        if not accepted:
             return
         target = right_edit.text().strip()
         if not target:
@@ -1904,11 +1939,7 @@ class MainWindow(QMainWindow):
                 x, y = self._cursor_xy()
                 crect = self.stream_overlay.close_rect()
                 if crect and self._in_rect(x, y, crect):
-                    if self.recorder.is_recording:
-                        self._stream_reset()
-                    else:
-                        self._pending_send = False   # просто закрыли облачко — текст не ждёт
-                        self.stream_overlay.hide()
+                    self.cancel_session()   # крестик = то же, что Escape
 
         except Exception as e:
             log("CLICK_CHECK_ERROR", str(e))
@@ -2024,6 +2055,7 @@ class MainWindow(QMainWindow):
         self._ignore_text = True   # запоздалый текст отменённой диктовки не вставляем
         self._pending_send = False
         self._cloud_edited = False
+        self._set_esc(False)
         # буфер обмена не трогаем: он программе не нужен, а чужие картинки целы
         self.stream_overlay.set_wave_active(False)   # отмена — волна замирает
         self.stream_overlay.set_send_visible(False)
@@ -2131,6 +2163,7 @@ class MainWindow(QMainWindow):
         self._stream_committed = text
         self.stream_overlay.show_text(text)
         self.stream_overlay.set_send_visible(True)
+        self._set_esc(True)    # пока текст в облачке, Escape его убирает
 
     def _do_paste(self, text):
         try:
@@ -2152,6 +2185,7 @@ class MainWindow(QMainWindow):
             self._pending_send = False
             self._cloud_edited = False
             self._stream_committed = ""
+            self._set_esc(False)   # сессия закончена — Escape снова обычная клавиша
             self.stream_overlay.hide()
             self.stream_overlay.clear_anchor()
         except Exception as e:

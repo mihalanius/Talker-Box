@@ -14,6 +14,7 @@ WM_SYSKEYUP = 0x0105
 HC_ACTION = 0
 VK_LWIN = 0x5B
 VK_RWIN = 0x5C
+VK_ESCAPE = 0x1B
 
 VK_MAP = {
     "ctrl": 0x11, "lctrl": 0x11, "rctrl": 0x11,
@@ -76,10 +77,14 @@ def parse_hotkey(hotkey_str):
 
 
 class HotkeyListener:
-    def __init__(self, hotkey_str, on_down, on_up):
+    def __init__(self, hotkey_str, on_down, on_up, on_escape=None):
         self.hotkey_str = hotkey_str
         self.on_down = on_down
         self.on_up = on_up
+        self.on_escape = on_escape
+        # ловим Escape только пока идёт сессия (диктовка или текст в облачке),
+        # чтобы не отбирать клавишу у остальных программ
+        self.esc_enabled = False
         self._thread = None
         self._running = False
         self._hook_id = 0
@@ -101,6 +106,7 @@ class HotkeyListener:
     def _run(self):
         pressed = set()
         was_combo = False
+        esc_swallowed = [False]
         hook_id_val = [0]
 
         combo_keys = set()
@@ -116,6 +122,21 @@ class HotkeyListener:
                 vk = kb.vkCode
                 is_down = wParam in (WM_KEYDOWN, WM_SYSKEYDOWN)
                 is_up = wParam in (WM_KEYUP, WM_SYSKEYUP)
+
+                # Escape = отмена распознавания (как крестик в облачке).
+                # Клавишу глушим, чтобы она не сработала ещё и в активной программе.
+                if vk == VK_ESCAPE and self.esc_enabled and vk != self._main_vk:
+                    if is_down:
+                        esc_swallowed[0] = True
+                        try:
+                            if self.on_escape:
+                                self.on_escape()
+                        except Exception:
+                            pass
+                        return 1
+                    if is_up and esc_swallowed[0]:
+                        esc_swallowed[0] = False
+                        return 1
 
                 if is_down:
                     pressed.add(vk)
