@@ -709,6 +709,7 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(central)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(0)
+        self._root_lay = root   # нужен, чтобы у «Словаря» убрать нижний отступ
 
         header = QHBoxLayout()
         header.setSpacing(6)
@@ -1032,8 +1033,12 @@ class MainWindow(QMainWindow):
         try:
             if which == "dict":
                 self.content_lay.setContentsMargins(0, 0, 0, 0)
+                if getattr(self, "_root_lay", None) is not None:
+                    self._root_lay.setContentsMargins(18, 16, 18, 2)   # снизу без полосы
             else:
                 self.content_lay.setContentsMargins(16, 20, 16, 16)
+                if getattr(self, "_root_lay", None) is not None:
+                    self._root_lay.setContentsMargins(18, 16, 18, 16)
         except Exception:
             pass
         if which == "dict" and hasattr(self, "dict_edit"):
