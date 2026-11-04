@@ -1,8 +1,11 @@
 import os
 import datetime
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)))
-LOG_FILE = os.path.join(LOG_DIR, "talkerbox.log")
+from paths import get_exe_dir
+
+# файл лога кладём рядом с программой: в onefile-сборке __file__ смотрит в _MEIPASS,
+# поэтому от него путь не считается — иначе лог писался во временную папку и терялся
+LOG_FILE = os.path.join(get_exe_dir(), "talkerbox.log")
 
 
 def log(event, details=""):

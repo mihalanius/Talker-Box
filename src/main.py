@@ -2201,6 +2201,16 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
 
         tray_menu.addSeparator()
 
+        # автозагрузка: одна и та же запись в реестре, что делает установщик —
+        # нужна и портативной версии, у неё установщика нет
+        self.autostart_action = QAction("Автозагрузка", self)
+        self.autostart_action.setCheckable(True)
+        self.autostart_action.setChecked(self._autostart_enabled())
+        self.autostart_action.toggled.connect(self._toggle_autostart)
+        tray_menu.addAction(self.autostart_action)
+
+        tray_menu.addSeparator()
+
         toggle_action = QAction("Вкл/Выкл запись", self)
         toggle_action.triggered.connect(self.toggle_recording)
         tray_menu.addAction(toggle_action)
@@ -2214,6 +2224,62 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         self.tray.setContextMenu(tray_menu)
         self.tray.activated.connect(self.tray_activated)
         self.tray.show()
+
+    # ---------- автозагрузка (реестр, как у установщика) ----------
+
+    AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    AUTOSTART_NAME = "TalkerBox"
+
+    def _launch_command(self):
+        """Команда для автозапуска: собранный exe — он сам, dev — pythonw + main.py."""
+        if getattr(sys, "frozen", False):
+            return '"%s" --minimized' % sys.executable
+        py = sys.executable
+        pythonw = os.path.join(os.path.dirname(py), "pythonw.exe")
+        if os.path.exists(pythonw):
+            py = pythonw
+        script = os.path.join(get_base_dir(), "src", "main.py")
+        return '"%s" "%s" --minimized' % (py, script)
+
+    def _autostart_enabled(self):
+        """Включена ли автозагрузка и совпадает ли путь с текущим exe (портабл могли перенести)."""
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.AUTOSTART_KEY) as key:
+                value, _kind = winreg.QueryValueEx(key, self.AUTOSTART_NAME)
+            return bool(value) and value == self._launch_command()
+        except Exception:
+            return False
+
+    def _set_autostart(self, enabled):
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, self.AUTOSTART_KEY, 0,
+                                winreg.KEY_SET_VALUE) as key:
+                if enabled:
+                    winreg.SetValueEx(key, self.AUTOSTART_NAME, 0, winreg.REG_SZ,
+                                      self._launch_command())
+                    log("AUTOSTART_ON", self._launch_command())
+                else:
+                    try:
+                        winreg.DeleteValue(key, self.AUTOSTART_NAME)
+                    except FileNotFoundError:
+                        pass          # уже выключена — не ошибка
+                    log("AUTOSTART_OFF", "")
+            return True
+        except Exception as e:
+            log("AUTOSTART_ERROR", str(e))
+            return False
+
+    def _toggle_autostart(self, checked):
+        if not self._set_autostart(bool(checked)):
+            # вернуть галочку в реальное состояние, если реестр не записался
+            self.autostart_action.blockSignals(True)
+            self.autostart_action.setChecked(self._autostart_enabled())
+            self.autostart_action.blockSignals(False)
+            QMessageBox.warning(self, "Автозагрузка",
+                                "Не удалось изменить автозагрузку.\n"
+                                "Проверьте права на запись в реестр (HKCU).")
 
     def create_mic_icon(self, color):
         base = QPixmap(64, 64)

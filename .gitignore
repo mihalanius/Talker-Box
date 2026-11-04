@@ -31,3 +31,6 @@ history.txt
 vocabularies/*.txt
 # выгрузки истории (экспорт в HTML)
 history_*.html
+# портативная сборка и архивы
+portable/
+*.zip
