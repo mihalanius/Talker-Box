@@ -482,6 +482,14 @@ data URI), иначе картинка сломается.
 - `_create_mode_icon(is_hold, active)` и `_apply_mode_icon()`: картинка масштабируется в 50×50 (`KeepAspectRatio`, `SmoothTransformation`) и ставится в `QLabel`. Активный режим — чёрный, неактивный — тот же рисунок с `painter.setOpacity(0.35)` (раньше серый контур `#555`).
 - Кружок с рамкой остался только как запасной вариант: если `images/*.png` нет, `_apply_mode_icon` возвращает `False` и рисуется прежний значок в круге (`_paint_mode_icon`).
 - `build.bat`: добавлено `--add-data "../images;images"` и `xcopy images dist\TalkerBox\images`; `images/*.png` в git.
+
+### Список микрофонов (04.11.2026)
+
+- Было: в списке все устройства `query_devices()` с `max_input_channels > 0` — MME-заглушки «Переназначение звуковых устройств», «Первичный драйвер записи», плюс каждый микрофон по 3–4 раза (MME, DirectSound, WASAPI, WDM-KS) — 11 пунктов.
+- Стало: `_input_devices()` берёт только основной host API (`sd.default.hostapi`, у нас MME), выкидывает служебные имена (`MIC_SKIP`: переназначение, sound mapper, первичный драйвер, primary sound, microsoft, stereo mix/стерео микшер, what u hear, loopback, virtual, vb-audio, cable output) и дубли по имени. Остаётся ровно то, что видно в «Параметрах Windows»: `Microphone (USB Audio Device)`, `Microphone (Realtek(R) Audio)`.
+- Индекс устройства хранится в `itemData` пункта (`self.mic_combo.addItem(name, idx)`), `_on_mic_changed` берёт `currentData()` — раньше искал по имени и мог попасть на дубль из другого host API.
+- Первый пункт: `MIC_DEFAULT = "Системный по умолчанию"` (было `"(системный по умолчанию)"`); старое сохранённое значение при загрузке мапится на него.
+- Проверено: 3 пункта в списке; выбор ставит `recorder.device` 1/2/None и пишет `mic_device`; `sd.InputStream(device=1)` открывается.
 - Проверено запуском с реальным окном: снимки «Главная» и «Настройки», переключение всех вкладок без ошибок.
 - Окружение: Python 3.13.15 переустановлен пользователем, `venv` проекта снова рабочий (`venv\Scripts\python.exe -V` → 3.13.15).
 
