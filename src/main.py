@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import shutil
 import threading
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
@@ -947,6 +948,9 @@ class MainWindow(QMainWindow):
             "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
             "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
         self.dict_edit.textChanged.connect(self._on_dict_text_changed)
+        # системное меню как в Блокноте: вырезать / копировать / вставить / удалить
+        self.dict_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.dict_edit.customContextMenuRequested.connect(self._dict_context_menu)
         box.add(self.dict_edit, 1)
         lay.addWidget(box, 1)
 
@@ -1013,6 +1017,12 @@ class MainWindow(QMainWindow):
         try:
             path = self._dict_file_path()
             os.makedirs(os.path.dirname(path), exist_ok=True)
+            # страховка: предыдущее содержимое файла — в Словарь.txt.bak (одна копия)
+            try:
+                if os.path.exists(path):
+                    shutil.copyfile(path, path + ".bak")
+            except Exception:
+                pass
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self.dict_edit.toPlainText())
             self._dict_dirty = False
@@ -1022,6 +1032,55 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.dict_status.setText("Ошибка сохранения")
             log("DICT_SAVE_ERROR", str(e))
+
+    def _dict_context_menu(self, pos):
+        """ПКМ по словарю — обычное меню как в Блокноте (отмена, вырезать, вставить)."""
+        ed = self.dict_edit
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
+            " padding: 4px; font-size: 12px; }"
+            "QMenu::item { padding: 4px 22px 4px 12px; }"
+            "QMenu::item:selected { background: #d6f5e8; }"
+            "QMenu::item:disabled { color: #aaaaaa; }"
+            "QMenu::separator { height: 1px; background: #e2e2df; margin: 4px 6px; }")
+        cur = ed.textCursor()
+        has_sel = cur.hasSelection()
+        clipboard_has_text = bool(QApplication.clipboard().text())
+
+        a_undo = menu.addAction("Отменить")
+        a_undo.setEnabled(ed.document().isUndoAvailable())
+        a_redo = menu.addAction("Вернуть")
+        a_redo.setEnabled(ed.document().isRedoAvailable())
+        menu.addSeparator()
+        a_cut = menu.addAction("Вырезать")
+        a_cut.setEnabled(has_sel)
+        a_copy = menu.addAction("Копировать")
+        a_copy.setEnabled(has_sel)
+        a_paste = menu.addAction("Вставить")
+        a_paste.setEnabled(clipboard_has_text)
+        a_del = menu.addAction("Удалить")
+        a_del.setEnabled(has_sel)
+        menu.addSeparator()
+        a_all = menu.addAction("Выделить всё")
+
+        action = menu.exec(ed.mapToGlobal(pos))
+        if action is None:
+            return
+        if action is a_undo:
+            ed.undo()
+        elif action is a_redo:
+            ed.redo()
+        elif action is a_cut:
+            ed.cut()
+        elif action is a_copy:
+            ed.copy()
+        elif action is a_paste:
+            ed.paste()
+        elif action is a_del:
+            ed.textCursor().removeSelectedText()
+        elif action is a_all:
+            ed.selectAll()
 
     def _build_hist_page(self):
         lay = QVBoxLayout(self.hist_page)

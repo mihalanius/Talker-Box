@@ -26,3 +26,4 @@ icons_backup/
 talkerbox.log
 # история распознавания (рабочие данные)
 history.txt
+*.bak
