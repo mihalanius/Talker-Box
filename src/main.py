@@ -1844,16 +1844,8 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         layout.setSpacing(4)
         layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
-        icon_container = QWidget()
-        icon_container.setFixedSize(50, 50)
-        icon_container._is_hold = "HOLD" in subtitle.upper()
-        icon_container.setStyleSheet(f"""
-            border: 1px solid {'#1c1c1c' if active else '#e2e2de'};
-            border-radius: 25px;
-            background: #ffffff;
-        """)
-        icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
-        icon_container._is_hold = "HOLD" in subtitle.upper()
+        is_hold = "HOLD" in subtitle.upper()
+        icon_container = self._create_mode_icon(is_hold, active)
         panel._icon_container = icon_container
         layout.addWidget(icon_container, alignment=Qt.AlignmentFlag.AlignHCenter)
 
@@ -1880,6 +1872,52 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         panel._title_label = t
         panel._subtitle_label = sub
         return panel
+
+    def _create_mode_icon(self, is_hold, active):
+        """Иконка режима: картинка images/hold.png | toggle.png, иначе рисованный кружок."""
+        icon = QLabel()
+        icon.setFixedSize(50, 50)
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        icon._is_hold = is_hold
+        if self._apply_mode_icon(icon, is_hold, active):
+            return icon
+        # картинок нет — остаётся прежний кружок с нарисованным значком
+        icon.setStyleSheet(
+            "border: 1px solid %s; border-radius: 25px; background: #ffffff;"
+            % ('#1c1c1c' if active else '#e2e2de'))
+        icon.paintEvent = lambda e, ic=icon, at=active: self._paint_mode_icon(ic, e, at)
+        return icon
+
+    def _mode_icon_pixmap(self, is_hold, size, active):
+        """Пиксмап иконки: активный режим — чёрный, неактивный — приглушённый."""
+        name = "hold.png" if is_hold else "toggle.png"
+        path = os.path.join(get_base_dir(), "images", name)
+        if not os.path.exists(path):
+            return None
+        src = QPixmap(path)
+        if src.isNull():
+            return None
+        pix = src.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)
+        if active:
+            return pix
+        faded = QPixmap(pix.size())
+        faded.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(faded)
+        painter.setOpacity(0.35)          # неактивный режим — светлее, как раньше серый контур
+        painter.drawPixmap(0, 0, pix)
+        painter.end()
+        return faded
+
+    def _apply_mode_icon(self, icon, is_hold, active):
+        """Поставить картинку в иконку. False — картинки нет, нужен рисованный вариант."""
+        pix = self._mode_icon_pixmap(is_hold, icon.width(), active)
+        if pix is None:
+            return False
+        icon.setStyleSheet("background: transparent; border: none;")
+        icon.setPixmap(pix)
+        return True
 
     def _update_panel_style(self, panel, active):
         panel.set_active(active)
@@ -1928,12 +1966,13 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         panel._subtitle_label.setStyleSheet(f"color: {color}; font: bold 10px 'Segoe UI'; background: transparent; border: none;")
         panel._title_label.setStyleSheet("color: #00c25a; font: 11px 'Segoe UI'; background: transparent; border: none;")
         icon_container = panel._icon_container
-        icon_container.setStyleSheet(f"""
-            border: 1px solid {'#1c1c1c' if active else '#e2e2de'};
-            border-radius: 25px;
-            background: #ffffff;
-        """)
-        icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
+        if not self._apply_mode_icon(icon_container, getattr(icon_container, "_is_hold", True), active):
+            icon_container.setStyleSheet(f"""
+                border: 1px solid {'#1c1c1c' if active else '#e2e2de'};
+                border-radius: 25px;
+                background: #ffffff;
+            """)
+            icon_container.paintEvent = lambda e, ic=icon_container, at=active: self._paint_mode_icon(ic, e, at)
         icon_container.update()
 
     def _create_center_widget(self):
