@@ -64,7 +64,8 @@ start.bat   :: запуск из исходников (venv\Scripts\python.exe s
 Модель распознавания (GigaAM v3, 220 МБ) лежит в `models\GigaAM\` — без неё программа
 запустится, но не будет распознавать речь.
 
-Подробно, по шагам и с разбором ошибок: [docs/dev_install_guide.md](docs/dev_install_guide.md).
+Подробно, по шагам и с разбором ошибок: [docs/dev_install_guide.md](docs/dev_install_guide.md)
+(в браузере — [docs/dev_install_guide.html](docs/dev_install_guide.html)).
 
 ## Лицензия
 

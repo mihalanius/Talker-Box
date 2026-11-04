@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talker Box — установка окружения для dev-версии</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --bg2: #1e2030;
+  --card: #24283b;
+  --code: #1a1b26;
+  --text: #c0caf5;
+  --muted: #a9b1d6;
+  --dim: #565f89;
+  --blue: #7aa2f7;
+  --cyan: #7dcfff;
+  --green: #9ece6a;
+  --yellow: #e0af68;
+  --red: #f7768e;
+  --magenta: #bb9af7;
+  --border: #3b4261;
+  --orange: #ff9e64;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.7;
+  padding: 0;
+}
+.container { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+.header {
+  text-align: center;
+  padding: 40px 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 30px;
+  background: linear-gradient(180deg, rgba(122,162,247,0.06) 0%, transparent 100%);
+}
+.header h1 { color: var(--blue); font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+.header .subtitle { color: var(--dim); font-size: 13px; }
+.pill {
+  display: inline-block;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px;
+}
+
+.toc {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 30px;
+}
+.toc h2 { color: var(--magenta); font-size: 14px; margin-bottom: 12px; }
+.toc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; }
+.toc a { color: var(--blue); text-decoration: none; font-size: 13px; padding: 3px 0; display: block; transition: color 0.2s; }
+.toc a:hover { color: var(--cyan); text-decoration: underline; }
+
+.section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.section h2 {
+  color: var(--yellow);
+  font-size: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.section h3 { color: var(--orange); font-size: 15px; margin: 18px 0 10px; }
+.section p { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
+.section ul, .section ol { color: var(--muted); font-size: 14px; margin: 8px 0 14px 24px; }
+.section li { margin-bottom: 4px; }
+
+pre {
+  background: var(--code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  overflow-x: auto;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text);
+  position: relative;
+}
+pre .label {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+code { font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 13px; }
+p code, li code, td code {
+  background: var(--code);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--cyan);
+  font-size: 12px;
+}
+
+.tag { display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+.tag-required { background: rgba(247,118,142,0.15); color: var(--red); }
+.tag-optional { background: rgba(158,206,106,0.15); color: var(--green); }
+.tag-info { background: rgba(122,162,247,0.15); color: var(--blue); }
+
+.warning {
+  background: rgba(224,175,104,0.1);
+  border-left: 3px solid var(--yellow);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.warning::before { content: "⚠ "; color: var(--yellow); }
+.success {
+  background: rgba(158,206,106,0.1);
+  border-left: 3px solid var(--green);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.trouble {
+  background: rgba(247,118,142,0.08);
+  border-left: 3px solid var(--red);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.checklist { list-style: none; margin-left: 0; padding-left: 0; }
+.checklist li { padding: 6px 0 6px 28px; position: relative; font-size: 13px; }
+.checklist li::before { content: "☐"; position: absolute; left: 4px; color: var(--blue); font-size: 14px; }
+
+.table-wrap { overflow-x: auto; margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  background: var(--bg2);
+  color: var(--cyan);
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+td { padding: 8px 14px; border: 1px solid var(--border); color: var(--muted); }
+tr:nth-child(even) { background: rgba(30,32,48,0.4); }
+
+.back-to-top {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--bg);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  display: none;
+  z-index: 100;
+  transition: all 0.3s;
+}
+.back-to-top:hover { background: var(--cyan); transform: scale(1.1); }
+
+.footer {
+  text-align: center;
+  padding: 30px 0;
+  color: var(--dim);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+
+@media (max-width: 600px) {
+  .toc-grid { grid-template-columns: 1fr; }
+  .header h1 { font-size: 20px; }
+  .section { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<div class="container">
+
+<div class="header">
+  <h1>🎤 Talker Box — установка окружения для dev-версии</h1>
+  <div class="subtitle">Запуск из исходников на чистом Windows 10/11 (64-bit): Python 3.13, пакеты, модель GigaAM</div>
+  <br>
+  <span class="pill">Windows 10/11 x64</span>
+  <span class="pill">Python 3.13</span>
+  <span class="pill">PyQt6</span>
+  <span class="pill">sherpa-onnx</span>
+  <span class="pill">GigaAM v3 · 221 МБ</span>
+</div>
+
+<div class="toc">
+  <h2>Содержание</h2>
+  <div class="toc-grid">
+    <a href="#checklist">Короткий чек-лист</a>
+    <a href="#python">1. Python 3.13</a>
+    <a href="#vcpp">2. Visual C++ Redistributable</a>
+    <a href="#project">3. Папка проекта</a>
+    <a href="#model">4. Модель GigaAM</a>
+    <a href="#setup">5. Пакеты: setup.bat</a>
+    <a href="#packages">Что за пакеты и зачем</a>
+    <a href="#manual">Установка вручную</a>
+    <a href="#run">6. Запуск</a>
+    <a href="#trouble">7. Если не запускается</a>
+    <a href="#files">8. Рабочие файлы</a>
+    <a href="#update">9. Обновление</a>
+    <a href="#reqs">10. Требования к машине</a>
+  </div>
+</div>
+
+<div class="section" id="checklist">
+  <h2>Короткий чек-лист</h2>
+  <p>Готовый установщик <code>TalkerBoxSetup.exe</code> этого НЕ требует — там всё внутри. Здесь только запуск из папки проекта через <code>start.bat</code>.</p>
+  <ul class="checklist">
+    <li>Python <strong>3.13</strong> (64-bit) — установить</li>
+    <li>Visual C++ Redistributable 2015–2022 (x64) — обычно уже есть, проверить</li>
+    <li>Папка проекта с исходниками (<code>src\</code>, <code>requirements.txt</code>, батники)</li>
+    <li>Модель <code>models\GigaAM</code> — 4 файла, 221 МБ</li>
+    <li><code>setup.bat</code> — создаёт <code>venv</code> и ставит пакеты (один раз)</li>
+    <li><code>start.bat</code> — запуск</li>
+  </ul>
+</div>
+
+<div class="section" id="python">
+  <h2>1. Python 3.13 <span class="tag tag-required">обязательно</span></h2>
+  <p>Скачать: <a href="https://www.python.org/downloads/windows/" style="color:var(--cyan)">python.org/downloads/windows</a> — <strong>Windows installer (64-bit)</strong>, версия 3.13 (на эталонной машине — 3.13.15).</p>
+  <p>При установке:</p>
+  <ul>
+    <li>галочка <strong>Add python.exe to PATH</strong> — можно поставить (удобнее), но <code>setup.bat</code> её не требует: он сам ищет Python в <code>%LOCALAPPDATA%\Programs\Python\Python313</code> и <code>C:\Program Files\Python313</code>;</li>
+    <li><strong>Install launcher for all users</strong> — оставить по умолчанию.</li>
+  </ul>
+  <p>Проверка в «Командной строке»:</p>
+  <pre><span class="label">cmd</span>py -3.13 -V</pre>
+  <p>Ожидаемо: <code>Python 3.13.x</code>. Если <code>py</code> не найден — проверить полный путь:</p>
+  <pre><span class="label">cmd</span>"%LOCALAPPDATA%\Programs\Python\Python313\python.exe" -V</pre>
+  <div class="warning">Python 3.12 рядом не мешает — <code>setup.bat</code> ищет именно 3.13. Проект проверен на 3.13.15.</div>
+</div>
+
+<div class="section" id="vcpp">
+  <h2>2. Visual C++ Redistributable <span class="tag tag-optional">проверить</span></h2>
+  <p>Нужен для PyQt6 и sherpa-onnx. Лучше поставить заранее:</p>
+  <pre><span class="label">ссылка</span>https://aka.ms/vs/17/release/vc_redist.x64.exe</pre>
+  <p>Если он уже стоит, установщик предложит «Repair / Uninstall» — можно просто закрыть.</p>
+</div>
+
+<div class="section" id="project">
+  <h2>3. Папка проекта</h2>
+  <h3>Вариант А — с историей git</h3>
+  <pre><span class="label">cmd</span>git clone https://github.com/mihalanius/Talker-Box.git "D:\OpenCode_Arhive\Talker Box"</pre>
+  <h3>Вариант Б — скопировать папку целиком</h3>
+  <p>Нужны <code>src\</code>, <code>requirements.txt</code>, батники, <code>fonts\</code>, <code>sounds\</code>, <code>vocabularies\</code>.</p>
+  <div class="success">Путь с пробелами (<code>D:\OpenCode_Arhive\Talker Box</code>) работает — все батники используют <code>%~dp0</code> и <code>cd /d</code>, запускать можно откуда угодно.</div>
+  <div class="warning">Копировать <code>venv\</code>, <code>dist\</code>, <code>build\</code>, <code>__pycache__\</code> не нужно — создаются заново. Но и мешать не будут.</div>
+</div>
+
+<div class="section" id="model">
+  <h2>4. Модель распознавания GigaAM <span class="tag tag-required">обязательно</span></h2>
+  <p>Без модели программа запустится, но распознавать не будет (в логе — <code>MODEL_ERROR</code>). Нужна папка <strong><code>models\GigaAM</code></strong> в корне проекта:</p>
+  <div class="table-wrap">
+    <table>
+      <tr><th style="width:45%">Файл</th><th>Размер</th><th>Что это</th></tr>
+      <tr><td><code>encoder.int8.onnx</code></td><td>~224 МБ</td><td>основные веса (int8, CPU)</td></tr>
+      <tr><td><code>decoder.onnx</code></td><td>~4,6 МБ</td><td>декодер transducer</td></tr>
+      <tr><td><code>joiner.onnx</code></td><td>~2,7 МБ</td><td>joiner</td></tr>
+      <tr><td><code>tokens.txt</code></td><td>~13 КБ</td><td>словарь символов</td></tr>
+    </table>
+  </div>
+  <p>Скачать: <a href="https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16" style="color:var(--cyan)">sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16</a></p>
+  <p>Итоговая раскладка:</p>
+  <pre><span class="label">структура</span>Talker Box\
+├─ models\
+│  └─ GigaAM\
+│     ├─ encoder.int8.onnx
+│     ├─ decoder.onnx
+│     ├─ joiner.onnx
+│     └─ tokens.txt
+├─ src\
+├─ venv\            ← создаст setup.bat
+├─ setup.bat
+└─ start.bat</pre>
+  <p>Проверка из папки проекта:</p>
+  <pre><span class="label">cmd</span>dir models\GigaAM</pre>
+</div>
+
+<div class="section" id="setup">
+  <h2>5. Установка пакетов: setup.bat <span class="tag tag-required">обязательно</span></h2>
+  <p>Двойной клик по <strong><code>setup.bat</code></strong> в папке проекта. Что он делает:</p>
+  <ol>
+    <li>ищет Python 3.13 (перебор известных путей → <code>where python</code>);</li>
+    <li>если <code>venv\</code> нет — создаёт виртуальное окружение на этом Python;</li>
+    <li>обновляет <code>pip</code> и ставит пакеты из <code>requirements.txt</code>;</li>
+    <li>пишет <code>Setup complete. Run start.bat to launch.</code> и ждёт нажатия клавиши.</li>
+  </ol>
+  <div class="success">Пакеты ставятся <strong>внутрь <code>venv</code></strong> — система не засоряется. <code>venv</code> привязан к конкретному Python: если Python переустановить, окружение перестанет работать (лечится удалением <code>venv</code> и повторным <code>setup.bat</code>).</div>
+</div>
+
+<div class="section" id="packages">
+  <h2>Что должно стоять после setup.bat</h2>
+  <pre><span class="label">cmd</span>venv\Scripts\python.exe -m pip list</pre>
+  <p>Ожидаемые пакеты (версии эталонные, допускаются более новые):</p>
+  <div class="table-wrap">
+    <table>
+      <tr><th style="width:38%">Пакет</th><th style="width:22%">Версия</th><th>Зачем нужен</th></tr>
+      <tr><td>PyQt6 (+ PyQt6-Qt6, PyQt6-sip)</td><td>6.11.0 / 6.11.2 / 13.13.0</td><td>интерфейс программы</td></tr>
+      <tr><td>sounddevice</td><td>0.5.6</td><td>запись с микрофона (PortAudio внутри пакета)</td></tr>
+      <tr><td>numpy</td><td>2.5.4</td><td>обработка аудио</td></tr>
+      <tr><td>sherpa-onnx (+ sherpa-onnx-core)</td><td>2.0.0</td><td>распознавание речи GigaAM</td></tr>
+      <tr><td>comtypes</td><td>1.4.17</td><td>UI Automation — позиция каретки для облачка</td></tr>
+      <tr><td>pywin32-ctypes</td><td>0.2.3</td><td>Win32 API: хук клавиатуры, SendInput</td></tr>
+      <tr><td>pyperclip</td><td>1.11.0</td><td>остался с ранних версий, в работе не используется</td></tr>
+    </table>
+  </div>
+  <div class="warning"><code>pyinstaller</code> ставится не в <code>setup.bat</code>, а в <code>build.bat</code> — он нужен только для сборки exe.</div>
+</div>
+
+<div class="section" id="manual">
+  <h2>Установка вручную (если не хочется батника)</h2>
+  <p>Из папки проекта — ровно то же, что делает <code>setup.bat</code>:</p>
+  <pre><span class="label">cmd</span>"%LOCALAPPDATA%\Programs\Python\Python313\python.exe" -m venv venv
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\python.exe -m pip install -r requirements.txt</pre>
+</div>
+
+<div class="section" id="run">
+  <h2>6. Запуск</h2>
+  <pre><span class="label">cmd</span>start.bat</pre>
+  <p><code>start.bat</code> проверяет наличие <code>venv</code> (если нет — сам вызовет <code>setup.bat</code>) и запускает <code>venv\Scripts\python.exe src\main.py</code>. Окно консоли остаётся открытым — туда пишутся логи.</p>
+  <h3>Без чёрного окна консоли</h3>
+  <pre><span class="label">cmd</span>venv\Scripts\pythonw.exe src\main.py</pre>
+  <h3>Как понять, что всё поднялось</h3>
+  <pre><span class="label">talkerbox.log</span>MIC_SELECTED | (системный по умолчанию) -&gt; device=None
+MODEL_LOADED | GigaAM v3 trans-punct</pre>
+  <p>Модель грузится ~2–5 секунд. Дальше программа висит в трее, горячая клавиша по умолчанию <code>Ctrl+Win</code>.</p>
+</div>
+
+<div class="section" id="trouble">
+  <h2>7. Если не запускается</h2>
+
+  <h3>ERROR: Python 3.13 not found</h3>
+  <div class="trouble">Python не установлен в стандартный путь. Проверить: <code>where python</code>. Если находит 3.12 или ничего — переустановить 3.13 из python.org (или вписать свой путь в <code>setup.bat</code>).</div>
+
+  <h3>'python' is not recognized</h3>
+  <div class="trouble">Python не в PATH. Это не мешает <code>start.bat</code>, но для команд вручную используйте полный путь <code>"%LOCALAPPDATA%\Programs\Python\Python313\python.exe"</code>.</div>
+
+  <h3>Ошибка при pip install (таймаут, обрыв)</h3>
+  <div class="trouble">Плохой канал. Повторить <code>setup.bat</code>; при повторяющихся обрывах — с таймаутом и ретраями:</div>
+  <pre><span class="label">cmd</span>venv\Scripts\python.exe -m pip install -r requirements.txt --timeout 60 --retries 10</pre>
+
+  <h3>ImportError: DLL load failed</h3>
+  <div class="trouble">Не установлен Visual C++ Redistributable x64 (пункт 2) или стоит 32-битный Python. Нужен 64-bit.</div>
+
+  <h3>Программа открылась, но текст не распознаётся</h3>
+  <div class="trouble">Нет модели: проверить <code>models\GigaAM</code> (все 4 файла), в <code>talkerbox.log</code> искать <code>MODEL_ERROR</code> / <code>MODEL_LOADED</code>. При наличии файлов, но ошибке — модель повреждена при скачивании (размер <code>encoder.int8.onnx</code> должен быть ≈ 224 МБ).</div>
+
+  <h3>Микрофон молчит</h3>
+  <div class="trouble">Настройки → строка «Микрофон» → выбрать устройство; в Windows «Параметры → Конфиденциальность → Микрофон» разрешить доступ приложениям.</div>
+
+  <h3>Горячая клавиша не срабатывает</h3>
+  <div class="trouble">В трее висит старая копия Talker Box (хук занимает комбинацию). Диспетчер задач → завершить все <code>TalkerBox.exe</code> / <code>python.exe</code> / <code>pythonw.exe</code> этого проекта, запустить заново. Если не помогает — не запускать от имени администратора (хук клавиатуры в другом уровне целостности не видит нажатий).</div>
+
+  <h3>venv сломался после переустановки Python</h3>
+  <div class="trouble"><code>Fatal error in launcher</code>, пустой <code>pip list</code> → удалить папку <code>venv</code> и запустить <code>setup.bat</code> заново.</div>
+
+  <h3>Кракозябры в консоли</h3>
+  <div class="trouble"><code>MIC_SELECTED | (����...)</code> — это кодировка консоли, на работу не влияет. Записи в <code>talkerbox.log</code> пишутся в UTF-8 корректно.</div>
+</div>
+
+<div class="section" id="files">
+  <h2>8. Файлы, которые создаются при работе</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th style="width:38%">Файл</th><th>Что это</th></tr>
+      <tr><td><code>settings.json</code></td><td>настройки программы (хоткей, режим, цвета облачка, микрофон)</td></tr>
+      <tr><td><code>talkerbox.log</code></td><td>лог событий и распознавания</td></tr>
+      <tr><td><code>src\crash.log</code></td><td>traceback, если программа падала</td></tr>
+      <tr><td><code>history.txt</code></td><td>история сеансов распознавания (вкладка «История»)</td></tr>
+      <tr><td><code>vocabularies\Словарь.txt</code> (+ <code>.bak</code>)</td><td>словарь замен слов (вкладка «Словарь»)</td></tr>
+    </table>
+  </div>
+  <p>Всё это рабочие данные — можно удалять по одному, программа создаст заново.</p>
+</div>
+
+<div class="section" id="update">
+  <h2>9. Обновление проекта</h2>
+  <pre><span class="label">cmd</span>git pull</pre>
+  <p>Если менялся <code>requirements.txt</code> — повторить <code>setup.bat</code>. Дальше обычный <code>start.bat</code>.</p>
+  <p>Сборка установщика: <code>build.bat</code> (PyInstaller) → затем <code>ISCC.exe installer\talkerbox.iss</code>.</p>
+</div>
+
+<div class="section" id="reqs">
+  <h2>10. Требования к машине</h2>
+  <ul>
+    <li>Windows 10/11, 64-bit</li>
+    <li>~700 МБ свободного места (<code>venv</code> ~340 МБ + модель 221 МБ)</li>
+    <li>4 ГБ ОЗУ минимум (проверено на 14 ГБ; модель int8 работает на CPU, видеокарта не нужна)</li>
+    <li>Любой микрофон — встроенный, гарнитура, USB-петличка</li>
+  </ul>
+</div>
+
+<div class="footer">
+  Talker Box v2.3 · установка окружения для dev-версии · 04.11.2026<br>
+  Markdown-версия: <code>docs/dev_install_guide.md</code>
+</div>
+
+</div>
+
+<script>
+  const btn = document.getElementById('backToTop');
+  window.addEventListener('scroll', () => {
+    btn.style.display = window.scrollY > 400 ? 'block' : 'none';
+  });
+</script>
+</body>
+</html>
