@@ -512,11 +512,13 @@ data URI), иначе картинка сломается.
 
 - `docs/dev_install_guide.md` — как самому поднять окружение на чистом Windows: Python 3.13 (64-bit), VC++ Redistributable, папка проекта, модель `models\GigaAM` (4 файла, 221 МБ, ссылка на HuggingFace), `setup.bat` (venv + `requirements.txt`), проверка `pip list`, `start.bat` / `pythonw`, ручная установка без батника, разбор 10 типовых ошибок, рабочие файлы (`settings.json`, `talkerbox.log`, `src\crash.log`, `history.txt`, `vocabularies\`), обновление через `git pull`, требования к машине (~700 МБ: venv ~340 МБ + модель).
 - README.md приведён к текущему состоянию: раздел «Разработка» → два батника и ссылка на гайд; «Модели» → одна GigaAM v3, Whisper/Vosk больше не упоминаются.
+- `docs/dev_install_guide.html` — та же инструкция в браузерной версии: стиль Tokyo Night (как `Documents\Vosk-Web-server-install-guide.html`), шапка с пилюлями, TOC на 2 колонки, чек-лист, таблицы, блоки `.warning/.success/.trouble`, кнопка «наверх». Ссылки из md и README. Проверено рендером в headless Chrome (1000 px), обе половины страницы.
 
 ## Git история
 
 | Тег | Описание |
 |-----|----------|
+| — | `da51c39` HTML-версия инструкции по окружению (`docs/dev_install_guide.html`, Tokyo Night), 04.11.2026 |
 | — | `770645b` Инструкция `docs/dev_install_guide.md` (окружение для dev-версии) + README под v2.3, 04.11.2026 |
 | — | `f267f2b` Вкладка «О программе» под макет v3 (контейнер с биркой, светлое поле текста, без внешней прокрутки), 04.11.2026 |
 | — | `TalkerBoxSetup-v2.3.2.exe` Сборка 04.11.2026: вкладка «Словарь» доведена (одна прокрутка, кнопка слоем на уровне бирки, отступы 18/16 px, фон как у окна) |
