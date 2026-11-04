@@ -1195,21 +1195,48 @@ class MainWindow(QMainWindow):
         ("all", "Вся история", 0),
     )
 
-    def _history_export_menu(self):
-        """Кнопка «Экспорт»: выбор периода → HTML-файл сразу открывается в браузере."""
+    def _history_menu(self):
+        """Меню кнопки «Экспорт»: 4 периода + отдельной строкой очистка истории."""
         menu = QMenu(self)
         menu.setStyleSheet(
             "QMenu { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
             " padding: 4px; font-size: 12px; }"
             "QMenu::item { padding: 6px 20px; }"
-            "QMenu::item:selected { background: #d6f5e8; }")
+            "QMenu::item:selected { background: #d6f5e8; }"
+            "QMenu::separator { height: 1px; background: #e2e2df; margin: 4px 8px; }")
         for key, title, _days in self.HISTORY_PERIODS:
             act = menu.addAction(title)
             act.setData(key)
+        menu.addSeparator()
+        self._act_clear_history = menu.addAction("Очистить историю…")
+        return menu
+
+    def _history_export_menu(self):
+        """Кнопка «Экспорт»: период → HTML-файл сразу в браузере; в меню же — очистка."""
+        menu = self._history_menu()
         point = self.btn_export.mapToGlobal(QPoint(0, self.btn_export.height() + 4))
         action = menu.exec(point)
-        if action is not None:
+        if action is None:
+            return
+        if action is getattr(self, "_act_clear_history", None):
+            self._clear_history_ask()
+        else:
             self._export_history(action.data())
+
+    def _clear_history_ask(self):
+        """«Очистить историю…» — сначала подтверждение, файл удаляется безвозвратно."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Очистить историю")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("Удалить всю историю распознавания?")
+        box.setInformativeText("Файл history.txt будет удалён — восстановить записи не получится.")
+        # свои подписи: стандартные «Yes/No» зависят от языковых настроек Windows
+        btn_yes = box.addButton("Удалить", QMessageBox.ButtonRole.DestructiveRole)
+        btn_no = box.addButton("Отмена", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_no)
+        box.exec()
+        if box.clickedButton() is btn_yes:
+            self._clear_history()
 
     def _history_entries(self):
         """history.txt → [(datetime, текст)] в порядке файла.
