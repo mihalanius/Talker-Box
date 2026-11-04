@@ -54,15 +54,18 @@
 
 ## Разработка
 
-Нужен Python 3.13 (64-bit). Дальше — два батника:
+Нужен Python 3.13 (64-bit). Дальше — один двойной клик:
 
 ```bat
-setup.bat   :: один раз: создаёт venv и ставит пакеты из requirements.txt
-start.bat   :: запуск из исходников (venv\Scripts\python.exe src\main.py)
+install_dev.bat   :: проверяет окружение, ставит пакеты, качает модель GigaAM, проверяет запуск
+start.bat         :: запуск из исходников (venv\Scripts\python.exe src\main.py)
 ```
 
-Модель распознавания (GigaAM v3, 220 МБ) лежит в `models\GigaAM\` — без неё программа
-запустится, но не будет распознавать речь.
+`install_dev.bat --check` — только проверить, ничего не меняя; `--run` — установить и сразу
+запустить. Под капотом — `setup_dev.py` (лог пишется в `setup_dev.log`).
+
+Модель распознавания (GigaAM v3, 220 МБ) лежит в `models\GigaAM\` — скрипт скачает её сам,
+если папки нет.
 
 Подробно, по шагам и с разбором ошибок: [docs/dev_install_guide.md](docs/dev_install_guide.md)
 (в браузере — [docs/dev_install_guide.html](docs/dev_install_guide.html)).

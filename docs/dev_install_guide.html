@@ -220,6 +220,7 @@ tr:nth-child(even) { background: rgba(30,32,48,0.4); }
   <h2>Содержание</h2>
   <div class="toc-grid">
     <a href="#checklist">Короткий чек-лист</a>
+    <a href="#oneclick">0. Один скрипт (install_dev.bat)</a>
     <a href="#python">1. Python 3.13</a>
     <a href="#vcpp">2. Visual C++ Redistributable</a>
     <a href="#project">3. Папка проекта</a>
@@ -246,6 +247,29 @@ tr:nth-child(even) { background: rgba(30,32,48,0.4); }
     <li><code>setup.bat</code> — создаёт <code>venv</code> и ставит пакеты (один раз)</li>
     <li><code>start.bat</code> — запуск</li>
   </ul>
+</div>
+
+<div class="section" id="oneclick">
+  <h2>0. Быстрый путь: один скрипт <span class="tag tag-info">рекомендуется</span></h2>
+  <p>Всё, что описано ниже по шагам, делает <code>install_dev.bat</code> — двойной клик и всё:</p>
+  <pre><span class="label">cmd</span>install_dev.bat            :: проверить, доустановить, докачать
+install_dev.bat --check    :: только проверить, ничего не менять
+install_dev.bat --run      :: установить и сразу запустить
+install_dev.bat --no-model :: не скачивать модель</pre>
+  <p>Что он делает сам:</p>
+  <ol>
+    <li>проверяет Python (3.12+, рекомендуемый — 3.13) и предупреждает, если версия другая;</li>
+    <li>создаёт <code>venv</code>, а если старое окружение сломалось — переименовывает его в <code>venv_broken</code> и создаёт новое;</li>
+    <li>ставит недостающие пакеты из <code>requirements.txt</code> (уже стоящие не трогает);</li>
+    <li>проверяет каждый модуль импортом и показывает версии;</li>
+    <li><strong>скачивает модель GigaAM с HuggingFace</strong> (~221 МБ), если файлов нет или они битые;</li>
+    <li>проверяет файлы проекта, создаёт стартовый <code>vocabularies\Словарь.txt</code>;</li>
+    <li>прогоняет <code>py_compile</code> по всем модулям <code>src</code>;</li>
+    <li>загружает модель через <code>sherpa-onnx</code> — проверка, что она реально работает;</li>
+    <li>в конце спрашивает: запустить программу сейчас? (ответ <code>y</code> — запустит).</li>
+  </ol>
+  <div class="success">Результат пишется в <code>setup_dev.log</code> в корне проекта — если что-то не так, видно, на каком шаге споткнулись.</div>
+  <div class="warning">Скрипту нужен только установленный Python — остальное (пакеты, модель) он скачает и настроит сам. Если скрипт не нужен, те же действия руками — в пунктах 1–6.</div>
 </div>
 
 <div class="section" id="python">
