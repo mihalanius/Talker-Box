@@ -8,7 +8,7 @@ cd /d "%~dp0"
 chcp 65001 >nul
 setlocal
 
-set "VERSION=2.3.4"
+set "VERSION=2.3.5"
 set "OUT=portable\Talker Box Portable"
 set "ZIP=portable\TalkerBox-Portable-v%VERSION%.zip"
 
@@ -32,7 +32,7 @@ echo [2/5] Building executable...
 cd src
 if exist dist rmdir /S /Q dist
 if exist build rmdir /S /Q build
-..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
+..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../lang;lang" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
 if errorlevel 1 goto :fail
 cd ..
 

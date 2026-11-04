@@ -3149,6 +3149,36 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
             webbrowser.open(link)
 
 
+def install_qt_russian(app):
+    """Перевод стандартных диалогов Qt (выбор цвета и т.п.) на русский.
+
+    Без этого QColorDialog показывает «Basic colors», «Hue», «Add to Custom Colors» —
+    тексты берутся из qtbase_ru.qm, который лежит либо в установленном PyQt6,
+    либо в папке lang рядом с программой (её кладём в сборку).
+    """
+    try:
+        from PyQt6.QtCore import QTranslator, QLibraryInfo
+    except Exception:
+        return None
+    paths = []
+    try:
+        paths.append(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath))
+    except Exception:
+        pass
+    paths.append(os.path.join(get_base_dir(), "lang"))
+    for path in paths:
+        if not path:
+            continue
+        translator = QTranslator(app)
+        if translator.load("qtbase_ru", path):
+            app.installTranslator(translator)
+            app._qt_translator = translator     # ссылку держим, иначе сборщик мусора её уберёт
+            log("QT_TRANSLATION", path)
+            return translator
+    log("QT_TRANSLATION", "не найден qtbase_ru.qm — диалоги Qt будут на английском")
+    return None
+
+
 def main():
     import traceback
     import ctypes
@@ -3162,6 +3192,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+    install_qt_russian(app)          # стандартные диалоги Qt (цвет, файлы, сообщения) — по-русски
     font = app.font()
     font.setFamily("Segoe UI")
     font.setPointSize(10)
