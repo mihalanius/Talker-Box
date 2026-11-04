@@ -1423,9 +1423,14 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         # отступы применяем ТОЛЬКО при реальном изменении: переустановка отступов
         # и стилей заставляет Qt заново пересчитывать дерево и тормозит переключение
         compact = which in ("dict", "hist", "help")
-        layout = {"compact": ((0, 0, 0, 0), (18, 16, 18, 16), 7),
-                  "other": ((16, 20, 16, 16), (18, 16, 18, 16), 15)}[
-                      "compact" if compact else "other"]
+        # «Настройки»: верх 7 px + 9 px поля под бирку контейнера = 16 — столько же,
+        # сколько слева/справа/снизу, чтобы контейнер стоял ровно по центру панели
+        if compact:
+            layout = ((0, 0, 0, 0), (18, 16, 18, 16), 7)
+        elif which == "settings":
+            layout = ((16, 7, 16, 16), (18, 16, 18, 16), 15)
+        else:
+            layout = ((16, 20, 16, 16), (18, 16, 18, 16), 15)
         margins, root_margins, top_gap = layout
         try:
             if getattr(self, "_applied_layout", None) != layout:
@@ -1680,7 +1685,9 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
 
         grid.addStretch(1)
         group.set_content(content)
-        lay.addWidget(group)
+        # групповой блок тянется на всю высоту страницы: тогда снизу остаётся
+        # ровно тот же отступ, что и сверху, а запас уходит внутрь контейнера
+        lay.addWidget(group, 1)
 
         self._on_mic_changed()
         self._apply_cloud_settings()
