@@ -575,6 +575,8 @@ data URI), иначе картинка сломается.
 
 | Тег | Описание |
 |-----|----------|
+| — | `TalkerBoxSetup-v2.3.3.exe` Сборка 04.11.2026 12:15: экспорт истории в HTML, пункт «Очистить историю», симметричные отступы «Главной» и «Настроек», логотип на 4 px выше, иконки режимов из `images/`, короткий список микрофонов |
+| — | `846f5a8` build: версия установщика 2.3.3, 04.11.2026 |
 | — | `8bf79a9` Экспорт истории: кнопка «Экспорт» (сутки/неделя/месяц/всё) → HTML сразу в браузере, 04.11.2026 |
 | — | `fce2929` `setup_dev.py` + `install_dev.bat` — установка окружения одним запуском (venv, пакеты, докачка модели, самопроверка), 04.11.2026 |
 | — | `da51c39` HTML-версия инструкции по окружению (`docs/dev_install_guide.html`, Tokyo Night), 04.11.2026 |
@@ -602,6 +604,7 @@ data URI), иначе картинка сломается.
 - **`setup.bat`** переписан: сам ищет Python 3.13 (`%LOCALAPPDATA%` → `C:\Program Files` → `where python`), проверяет/создаёт venv, ставит `requirements.txt`, возвращает коды ошибок, `chcp 65001`.
 - **`build.bat`**: путь к модели исправлен — `D:\OpenCode_Arhive\Voice models\...` больше не существует, копируется из `.\models\GigaAM`; в сборку добавлены `mascot_new.png`, `vocabularies\`, `settings.json`.
 - **Inno Setup 6:** `C:\Program Files (x86)\Inno Setup 6\ISCC.exe` (в PATH нет; UAC не нужен — `PrivilegesRequired=lowest`).
+- **04.11.2026: Inno Setup на машине не оказалось** (после переустановки Windows не восстановлен). Поставлен заново официальным инсталлятором 6.7.4 в пользовательскую папку: `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe` (`/VERYSILENT /CURRENTUSER`, UAC не спрашивал). Скачивание: `https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe` (прямая ссылка `jrsoftware.org/download.php/is.exe` отдаёт HTML-страницу).
 - **Цепочка сборки:** `build.bat` → `dist\TalkerBox\` (~278 МБ) → `ISCC.exe installer\talkerbox.iss` → `installer\Output\TalkerBoxSetup-v2.2.exe` (~212 МБ).
 - **Проверено:** тихая установка в temp-папку, запуск установленной копии, тихое удаление; ключ автозапуска HKCU создаётся и снимается.
 - **Известная мелочь:** в собранном exe `logger.py` не пишет `talkerbox.log` — путь считается от `__file__` (`_MEI...`), исключение глушится. На работу не влияет, починить при следующей правке.
