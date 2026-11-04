@@ -17,7 +17,7 @@
 - Два режима записи:
   - **Toggle** — нажал hotkey → запись, нажал → стоп + вставка
   - **Hold** — зажал hotkey → запись, отпустил → вставка
-- Менеджер голосовых моделей (Sherpa-Onnx, Whisper, Vosk)
+- Встроенная модель GigaAM v3 (русский, с пунктуацией) — работает офлайн, выбор моделей не нужен
 - Автозапуск при загрузке Windows
 - Работа в системном трее — не мешает работе
 
@@ -46,18 +46,25 @@
 
 ## Модели
 
-Поддерживаемые типы:
-- **Sherpa-Onnx** — легковесные модели (215 МБ), работают оффлайн
-- **Whisper** — тяжелые модели (1-3 ГБ), высокая точность
-- **Vosk** — альтернативные модели
+В программу зашита одна модель — **GigaAM v3 trans-punct** (sherpa-onnx, NeMo transducer, ~220 МБ):
+русский язык, транскрипция + пунктуация, работа полностью офлайн, CPU (int8). Выбора моделей в
+интерфейсе нет.
+
+Ссылка: [sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16)
 
 ## Разработка
 
-```bash
-pip install -r requirements.txt
-cd src
-python main.py
+Нужен Python 3.13 (64-bit). Дальше — два батника:
+
+```bat
+setup.bat   :: один раз: создаёт venv и ставит пакеты из requirements.txt
+start.bat   :: запуск из исходников (venv\Scripts\python.exe src\main.py)
 ```
+
+Модель распознавания (GigaAM v3, 220 МБ) лежит в `models\GigaAM\` — без неё программа
+запустится, но не будет распознавать речь.
+
+Подробно, по шагам и с разбором ошибок: [docs/dev_install_guide.md](docs/dev_install_guide.md).
 
 ## Лицензия
 
