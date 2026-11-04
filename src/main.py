@@ -762,7 +762,7 @@ class MainWindow(QMainWindow):
         brand.setStyleSheet("background: transparent;")
         logo_label = QLabel(brand)
         logo_label.setFixedSize(32, 32)
-        logo_label.move(0, 9)         # слой логотипа: вниз/вверх и влево/вправо — менять здесь
+        logo_label.move(0, 5)         # слой логотипа: по центру названия и слогана (было 9)
         logo_label.setStyleSheet("background: transparent;")
         logo_label.paintEvent = lambda e: self._paint_cube_logo(logo_label, e)
         title = QLabel("Talker Box", brand)
