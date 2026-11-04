@@ -1,14 +1,18 @@
 import sys
 import os
+import re
 import time
 import shutil
 import threading
+import webbrowser
+from datetime import datetime, timedelta
+from html import escape
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
                               QLineEdit, QListWidget, QFrame, QSlider, QColorDialog,
                               QScrollArea, QTextEdit, QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF, QPoint
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics, QCursor, QRadialGradient
 from recorder import Recorder
 from transcriber import Transcriber
@@ -1093,10 +1097,11 @@ class MainWindow(QMainWindow):
 
         box = GroupBox("История", active=False, inner=True)
 
-        btn_clear = QPushButton("Очистить")
-        btn_clear.setFixedHeight(24)
-        btn_clear.clicked.connect(self._clear_history)
-        box.set_corner_widget(btn_clear)
+        # «Экспорт» вместо «Очистить»: выпадающий список периодов → HTML в браузере
+        self.btn_export = QPushButton("Экспорт  ▾")
+        self.btn_export.setFixedHeight(24)
+        self.btn_export.clicked.connect(self._history_export_menu)
+        box.set_corner_widget(self.btn_export)
 
         self.hist_edit = QTextEdit()
         self.hist_edit.setReadOnly(True)      # историю читаем и выделяем, но не правим
@@ -1180,6 +1185,145 @@ class MainWindow(QMainWindow):
         elif action is act_copy:
             QApplication.clipboard().setText(selected)
 
+    # ---------- экспорт истории в HTML ----------
+
+    # (ключ, подпись в меню, сколько дней назад брать; 0 = вся история)
+    HISTORY_PERIODS = (
+        ("day", "За последние сутки", 1),
+        ("week", "За неделю", 7),
+        ("month", "За месяц", 30),
+        ("all", "Вся история", 0),
+    )
+
+    def _history_export_menu(self):
+        """Кнопка «Экспорт»: выбор периода → HTML-файл сразу открывается в браузере."""
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #ffffff; color: #222222; border: 1px solid #cccccc;"
+            " padding: 4px; font-size: 12px; }"
+            "QMenu::item { padding: 6px 20px; }"
+            "QMenu::item:selected { background: #d6f5e8; }")
+        for key, title, _days in self.HISTORY_PERIODS:
+            act = menu.addAction(title)
+            act.setData(key)
+        point = self.btn_export.mapToGlobal(QPoint(0, self.btn_export.height() + 4))
+        action = menu.exec(point)
+        if action is not None:
+            self._export_history(action.data())
+
+    def _history_entries(self):
+        """history.txt → [(datetime, текст)] в порядке файла.
+
+        Запись начинается строкой «[ДД.ММ.ГГГГ ЧЧ:ММ] текст»; продолжения (если в
+        распознанном тексте были переводы строк) дописываются к предыдущей записи.
+        """
+        entries = []
+        path = self._history_path()
+        if not os.path.exists(path):
+            return entries
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                for raw in f:
+                    line = raw.rstrip("\r\n")
+                    if not line.strip():
+                        continue
+                    m = re.match(r"^\[(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})\]\s?(.*)$", line)
+                    if m:
+                        try:
+                            stamp = datetime.strptime(m.group(1), "%d.%m.%Y %H:%M")
+                        except ValueError:
+                            continue
+                        entries.append([stamp, m.group(2)])
+                    elif entries:
+                        entries[-1][1] += "\n" + line
+        except Exception as e:
+            log("HISTORY_READ_ERROR", str(e))
+        return entries
+
+    def _export_history(self, period_key):
+        """Собрать HTML за выбранный период, сохранить рядом с программой и открыть."""
+        titles = {k: (title, days) for k, title, days in self.HISTORY_PERIODS}
+        title, days = titles.get(period_key, ("Вся история", 0))
+        entries = self._history_entries()
+        if days:
+            cutoff = datetime.now() - timedelta(days=days)
+            entries = [e for e in entries if e[0] >= cutoff]
+        if not entries:
+            QMessageBox.information(self, "Экспорт истории",
+                                    "За выбранный период записей нет.")
+            return
+        try:
+            document = self._history_html(title, entries)
+            name = "history_%s_%s.html" % (period_key, datetime.now().strftime("%Y-%m-%d_%H-%M"))
+            path = os.path.join(get_exe_dir(), name)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(document)
+            log("HISTORY_EXPORT", "%s entries=%d" % (path, len(entries)))
+            webbrowser.open("file:///" + path.replace("\\", "/"))
+        except Exception as e:
+            log("HISTORY_EXPORT_ERROR", str(e))
+            QMessageBox.warning(self, "Экспорт истории", "Не удалось сохранить файл:\n%s" % e)
+
+    def _history_html(self, title, entries):
+        """HTML-документ истории: светлая страница, карточки записей, печать без потерь."""
+        period_from = entries[0][0].strftime("%d.%m.%Y %H:%M")
+        period_to = entries[-1][0].strftime("%d.%m.%Y %H:%M")
+        total_chars = sum(len(e[1]) for e in entries)
+        rows = []
+        for stamp, text in entries:
+            rows.append(
+                '<article class="entry"><div class="stamp">%s</div>'
+                '<div class="text">%s</div></article>'
+                % (stamp.strftime("%d.%m.%Y · %H:%M"), escape(text).strip()))
+        return """<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>История распознавания — %(title)s</title>
+<style>
+:root { --bg: #f2f2ef; --card: #ffffff; --text: #1c1c1c; --muted: #6b6b6b; --green: #00914a; --border: #e2e2df; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 16px/1.65 'Segoe UI', system-ui, sans-serif; }
+.wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+.sub { color: var(--muted); font-size: 14px; margin-bottom: 26px; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+.stat { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+        padding: 10px 16px; font-size: 13px; color: var(--muted); }
+.stat b { color: var(--text); font-size: 16px; font-weight: 600; margin-right: 4px; }
+.entry { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+         padding: 16px 20px; margin-bottom: 10px; }
+.stamp { color: var(--green); font: 600 12px 'Consolas', monospace; margin-bottom: 8px; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+.footer { margin-top: 30px; color: var(--muted); font-size: 12px; text-align: center; }
+@media print { body { background: #fff; } .entry { border-color: #ddd; break-inside: avoid; } .wrap { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>История распознавания</h1>
+  <div class="sub">%(title)s &middot; %(period_from)s — %(period_to)s</div>
+  <div class="stats">
+    <div class="stat"><b>%(count)d</b>записей</div>
+    <div class="stat"><b>%(chars)d</b>символов</div>
+    <div class="stat">экспорт %(now)s</div>
+  </div>
+  %(rows)s
+  <div class="footer">Talker Box &middot; история распознавания речи</div>
+</div>
+</body>
+</html>""" % {
+            "title": escape(title),
+            "period_from": period_from,
+            "period_to": period_to,
+            "count": len(entries),
+            "chars": total_chars,
+            "now": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "rows": "\n  ".join(rows),
+        }
+
     def _build_help_page(self):
         lay = QVBoxLayout(self.help_page)
         # контейнер как на «Словаре» и «Истории»: бирка на линии рамки, внутри светлый блок
@@ -1209,7 +1353,7 @@ class MainWindow(QMainWindow):
             "Архитектура программы построена на дообученной модели нейросети от Сбера — GigaAM v3. "
             "Модель обучена правилам правописания и распознаёт чётко и быстро литературный текст. "
             "Хорошо распознаёт английские термины, если вы произносите их правильно. С жаргонными словами "
-            "и техническими терминами программе требуется индивидуальное обучение. Для этого в программе есть "
+            "и техническими терминами программе требуется индивидуальное обучение. Для этого в программе сделан "
             "персональный Словарь — это ваш личный процесс обучения, с помощью которого вы сможете пользоваться "
             "распознаванием текста более комфортно. Словарями можно делиться с другими пользователями: это обычный "
             "текстовый файл, достаточно просто вставить туда скопированный текст, и программа начнёт понимать "
@@ -1217,7 +1361,7 @@ class MainWindow(QMainWindow):
             "1. Откройте программу, где будете писать текст голосом, поставьте курсор в поле ввода и активируйте "
             "его нажатием ЛКМ.\n"
             "2. Нажмите горячую клавишу и начинайте диктовать текст.\n"
-            "3. Рядом с полем ввода появится облачко — в нём виден распознаваемый текст, как модель слышит вашу речь.\n"
+            "3. Рядом с полем ввода появится облачко — в нём видно распознаваемый текст, как модель слышит вашу речь.\n"
             "4. Увидели ошибку? Можно отменить распознавание клавишей Esc или крестиком в облачке — это сброс. "
             "Для продолжения работы снова нажимаете хоткей и говорите.\n"
             "5. В момент распознавания вы можете видеть неправильно распознанные слова и тут же их править "
@@ -1269,6 +1413,13 @@ class MainWindow(QMainWindow):
             self._refresh_dict_text()   # показать актуальное содержимое файла словаря
         if which == "hist" and hasattr(self, "hist_edit"):
             self._refresh_history()     # показать все сеансы распознавания
+        if which == "help" and hasattr(self, "help_edit"):
+            # открываем «О программе» С НАЧАЛА: после setPlainText курсор стоит в конце,
+            # и поле показывало середину текста вместо первого абзаца
+            cur = self.help_edit.textCursor()
+            cur.movePosition(cur.MoveOperation.Start)
+            self.help_edit.setTextCursor(cur)
+            self.help_edit.ensureCursorVisible()
 
     # ---------- вкладка «Настройки» — макет dashboard_v3 ----------
 

@@ -29,3 +29,5 @@ history.txt
 *.bak
 # словари пользователя — расходные данные, не коммитим
 vocabularies/*.txt
+# выгрузки истории (экспорт в HTML)
+history_*.html
