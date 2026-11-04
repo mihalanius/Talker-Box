@@ -649,6 +649,12 @@ def _is_terminal():
 class MainWindow(QMainWindow):
     _hotkey_signal = pyqtSignal(str)
 
+    # подпись «по умолчанию» в списке микрофонов и служебные устройства, которых там быть не должно
+    MIC_DEFAULT = "Системный по умолчанию"
+    MIC_SKIP = ("переназначение", "sound mapper", "первичный драйвер", "primary sound",
+                "microsoft", "stereo mix", "стерео микшер", "what u hear", "loopback",
+                "virtual", "vb-audio", "cable output")
+
     def __init__(self):
         super().__init__()
         self._hotkey_signal.connect(self._on_hotkey_event, Qt.ConnectionType.QueuedConnection)
@@ -1654,19 +1660,18 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         self.mic_combo.setFixedHeight(27)
         self.mic_combo.setMinimumWidth(150)
         self.mic_combo.setStyleSheet(self._combo_style())
-        self.mic_combo.addItem("(системный по умолчанию)")
-        try:
-            import sounddevice as _sd
-            for d in _sd.query_devices():
-                if d.get("max_input_channels", 0) > 0:
-                    self.mic_combo.addItem(d["name"])
-        except Exception:
-            pass
+        self.mic_combo.addItem(self.MIC_DEFAULT, None)
+        # только настоящие устройства записи: без MME-заглушек и дублей по имени
+        for idx, name in self._input_devices():
+            self.mic_combo.addItem(name, idx)
         saved_mic = self.settings.get("mic_device", "")
         if saved_mic:
-            i = self.mic_combo.findText(saved_mic)
-            if i >= 0:
-                self.mic_combo.setCurrentIndex(i)
+            if saved_mic in ("(системный по умолчанию)", self.MIC_DEFAULT):
+                self.mic_combo.setCurrentIndex(0)      # старое название по умолчанию
+            else:
+                i = self.mic_combo.findText(saved_mic)
+                if i >= 0:
+                    self.mic_combo.setCurrentIndex(i)
         self.mic_combo.currentIndexChanged.connect(self._on_mic_changed)
         ll.addWidget(self.mic_combo, 1)
         body.addWidget(left, 1)
@@ -1721,22 +1726,54 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
             else:
                 self.waveform.show_recording()
 
+    def _input_devices(self):
+        """Настоящие устройства записи: (индекс, имя) без заглушек и дублей.
+
+        В списке MME/DirectSound кроме железа есть служебные «Переназначение звуковых
+        устройств», «Первичный драйвер записи» и те же микрофоны по 3–4 раза (на каждый
+        host API). Оставляем только то, что видно в «Параметрах Windows», и берём
+        устройства основного host API — по ним же идёт запись.
+        """
+        try:
+            import sounddevice as _sd
+            devices = list(_sd.query_devices())
+            default_api = _sd.default.hostapi
+        except Exception as e:
+            log("MIC_ENUM_ERROR", str(e))
+            return []
+
+        found = []
+        for i, d in enumerate(devices):
+            if d.get("max_input_channels", 0) <= 0:
+                continue
+            name = (d.get("name") or "").strip()
+            low = name.lower()
+            if not name or any(bad in low for bad in self.MIC_SKIP):
+                continue
+            found.append((i, name, d.get("hostapi")))
+
+        # сначала устройства основного host API (те, что реально откроются при записи)
+        main_api = [item for item in found if item[2] == default_api]
+        picked = main_api or found
+
+        result, seen = [], set()
+        for i, name, _api in picked:
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append((i, name))
+        return result
+
     def _on_mic_changed(self):
         """Выбор микрофона: программа использует его напрямую, без настроек Windows."""
         name = self.mic_combo.currentText() if self.mic_combo else ""
-        dev = None
-        if name and name != "(системный по умолчанию)":
-            try:
-                import sounddevice as _sd
-                for i, d in enumerate(_sd.query_devices()):
-                    if d.get("max_input_channels", 0) > 0 and d["name"] == name:
-                        dev = i
-                        break
-            except Exception:
-                dev = None
-            self.settings.set("mic_device", name)
-        else:
+        dev = self.mic_combo.currentData() if self.mic_combo else None
+        if not name or name == self.MIC_DEFAULT:
+            dev = None
             self.settings.set("mic_device", "")
+        else:
+            self.settings.set("mic_device", name)
         self.recorder.device = dev
         log("MIC_SELECTED", f"{name or 'default'} -> device={dev}")
 
