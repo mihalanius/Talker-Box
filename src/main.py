@@ -906,6 +906,9 @@ class MainWindow(QMainWindow):
         self.help_page = QWidget()
         self._build_help_page()
         self.help_scroll = self._scroll(self.help_page)
+        # как у «Словаря» и «Истории»: фон = фону окна, листается только текст внутри блока
+        self.help_page.setStyleSheet("background: #d9d9d6;")
+        self.help_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content_lay.addWidget(self.help_scroll)
         self.help_scroll.hide()
         self._show_tab("main")
@@ -1179,26 +1182,38 @@ class MainWindow(QMainWindow):
 
     def _build_help_page(self):
         lay = QVBoxLayout(self.help_page)
-        lay.setContentsMargins(16, 14, 16, 14)
-        lay.setSpacing(10)
-        title = QLabel("Справка")
-        title.setStyleSheet("color: #00ff88; font: bold 13px 'Segoe UI'; background: transparent; border: none;")
-        lay.addWidget(title)
-        text = QLabel(
+        # контейнер как на «Словаре» и «Истории»: бирка на линии рамки, внутри светлый блок
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        box = GroupBox("О программе", active=False, inner=True)
+
+        # текст читается и выделяется, но не правится; прокрутка — только внутри поля
+        self.help_edit = QTextEdit()
+        self.help_edit.setReadOnly(True)
+        self.help_edit.setAcceptRichText(False)
+        self.help_edit.setMinimumHeight(60)
+        self.help_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.help_edit.setStyleSheet(
+            "QTextEdit { background: #ffffff; color: #1c1c1c; border: 1px solid #dcdcd8;"
+            " border-radius: 8px; padding: 10px; font: 12px 'Segoe UI'; }"
+            "QScrollBar:vertical { background: transparent; width: 8px; margin: 2px; }"
+            "QScrollBar::handle:vertical { background: #c6c6c2; border-radius: 4px; min-height: 24px; }"
+            "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+        box.add(self.help_edit, 1)
+        lay.addWidget(box, 1)
+
+        self.help_edit.setPlainText(
+            "Talker Box — голосовой ввод текста.\n\n"
             "1. Откройте программу, где будете писать текст голосом, и нажмите в поле ввода.\n"
             "2. Нажмите горячую клавишу и начинайте диктовать текст.\n"
             "3. Над полем ввода появится облачко — в нём видно, как модель слышит вашу речь.\n"
             "4. Пауза в речи — фраза выравнивается в точный текст (тот, что уйдёт в поле).\n"
-            "5. Увидели ошибку? Правая кнопка мыши или крестик в облачке — сброс\n"
-            "    (со звуком и красной подсветкой). Диктовку продолжаете по новой клавише.\n"
+            "5. Увидели ошибку? Правая кнопка мыши или крестик в облачке — сброс (со звуком и красной подсветкой). "
+            "Диктовку продолжаете по новой клавише.\n"
             "6. Текст отправляется в поле ввода автоматически — облачко исчезает.\n\n"
             "Настройки облачка (цвет, шрифт, прозрачность, микрофон) — на вкладке «Настройки».\n"
-            "Если текст распознаётся хуже — поднесите микрофон ближе или выберите\n"
-            "внешний микрофон в настройках программы.")
-        text.setStyleSheet("color: #9a9a9a; font: 12px 'Segoe UI'; background: transparent; border: none;")
-        text.setWordWrap(True)
-        lay.addWidget(text)
-        lay.addStretch()
+            "Если текст распознаётся хуже — поднесите микрофон ближе или выберите внешний микрофон в настройках программы.")
 
     def _tab_style(self, active):
         return ("QPushButton { color: %s; background: %s; border: 1px solid rgba(0,255,136,%s);"
@@ -1219,7 +1234,7 @@ class MainWindow(QMainWindow):
             b.setChecked(key == which)
         # отступы применяем ТОЛЬКО при реальном изменении: переустановка отступов
         # и стилей заставляет Qt заново пересчитывать дерево и тормозит переключение
-        compact = which in ("dict", "hist")
+        compact = which in ("dict", "hist", "help")
         layout = {"compact": ((0, 0, 0, 0), (18, 16, 18, 16), 7),
                   "other": ((16, 20, 16, 16), (18, 16, 18, 16), 15)}[
                       "compact" if compact else "other"]
