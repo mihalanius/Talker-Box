@@ -8,7 +8,7 @@ cd /d "%~dp0"
 chcp 65001 >nul
 setlocal
 
-set "VERSION=2.3.5"
+set "VERSION=2.3.6"
 set "OUT=portable\Talker Box Portable"
 set "ZIP=portable\TalkerBox-Portable-v%VERSION%.zip"
 
