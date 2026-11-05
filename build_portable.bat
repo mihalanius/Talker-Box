@@ -42,13 +42,13 @@ if exist "portable" rmdir /S /Q "portable"
 mkdir "%OUT%"
 copy /Y "src\dist\TalkerBox.exe" "%OUT%\TalkerBox.exe" >nul
 copy /Y ads.json "%OUT%\" >nul
+if exist "ads" xcopy /E /I /Y ads "%OUT%\ads" >nul
 xcopy /E /I /Y sounds "%OUT%\sounds" >nul
 xcopy /E /I /Y fonts "%OUT%\fonts" >nul
 xcopy /E /I /Y images "%OUT%\images" >nul
 copy /Y talker_box.png "%OUT%\" >nul
 if exist "mascot_new.png" copy /Y mascot_new.png "%OUT%\" >nul
 copy /Y help.html "%OUT%\" >nul
-if exist "settings.json" copy /Y settings.json "%OUT%\" >nul
 if exist "vocabularies" xcopy /E /I /Y vocabularies "%OUT%\vocabularies" >nul
 
 echo.

@@ -17,6 +17,10 @@ import re
 from datetime import date, datetime, timedelta
 
 TRIAL_DAYS = 14
+# Пока приложение не распространяется — лицензирование ОТКЛЮЧЕНО:
+# все функции открыты, рекламы нет, триал не тикает.
+# Включить продажи: поставить в True — и триал/замки/реклама заработают.
+LICENSING_ENABLED = False
 CLOCK_ROLLBACK_LIMIT_DAYS = 1
 REG_PATH = r"Software\TalkerBox"
 MARKER_DIR = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "TalkerBox")
@@ -123,6 +127,8 @@ class License:
         return max(0, (end - _today()).days)
 
     def mode(self):
+        if not LICENSING_ENABLED:
+            return "pro"          # лицензирование выключено — всё открыто
         if self.is_pro():
             return "pro"
         return "trial" if self.days_left() > 0 else "free"
@@ -138,6 +144,8 @@ class License:
 
     def status_text(self):
         m = self.mode()
+        if not LICENSING_ENABLED:
+            return "Лицензирование отключено — все функции открыты"
         if m == "pro":
             return "Лицензия активирована — все функции открыты"
         if m == "trial":

@@ -27,14 +27,14 @@ echo.
 echo [3/5] Copying files...
 mkdir dist\TalkerBox 2>nul
 copy src\dist\TalkerBox.exe dist\TalkerBox\
-copy ads.json dist\TalkerBox\
+copy ads.json dist\TalkerBox\
+if exist "ads" xcopy /E /I /Y ads dist\TalkerBox\ads >nul
 xcopy /E /I /Y sounds dist\TalkerBox\sounds
 xcopy /E /I /Y fonts dist\TalkerBox\fonts
 xcopy /E /I /Y images dist\TalkerBox\images
 copy talker_box.png dist\TalkerBox\
 if exist "mascot_new.png" copy mascot_new.png dist\TalkerBox\
 copy help.html dist\TalkerBox\
-if exist "settings.json" copy settings.json dist\TalkerBox\
 if exist "vocabularies" xcopy /E /I /Y vocabularies dist\TalkerBox\vocabularies
 
 echo.
