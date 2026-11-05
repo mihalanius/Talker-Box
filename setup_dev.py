@@ -62,7 +62,6 @@ ASSETS = [
     "sounds/tap_02.wav",
     "sounds/transition_up.wav",
     "sounds/transition_down.wav",
-    "mascot.png",
     "mascot_new.png",
     "talker_box.png",
     "talker_box.ico",

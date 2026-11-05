@@ -32,7 +32,7 @@ echo [2/5] Building executable...
 cd src
 if exist dist rmdir /S /Q dist
 if exist build rmdir /S /Q build
-..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../lang;lang" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
+..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../lang;lang" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
 if errorlevel 1 goto :fail
 cd ..
 
@@ -46,7 +46,6 @@ xcopy /E /I /Y sounds "%OUT%\sounds" >nul
 xcopy /E /I /Y fonts "%OUT%\fonts" >nul
 xcopy /E /I /Y images "%OUT%\images" >nul
 copy /Y talker_box.png "%OUT%\" >nul
-copy /Y mascot.png "%OUT%\" >nul
 if exist "mascot_new.png" copy /Y mascot_new.png "%OUT%\" >nul
 copy /Y help.html "%OUT%\" >nul
 if exist "settings.json" copy /Y settings.json "%OUT%\" >nul

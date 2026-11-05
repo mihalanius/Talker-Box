@@ -41,7 +41,7 @@
 | `sounds/transition_down.wav` | Звук toggle OFF |
 | `talker_box.png` | Иконка приложения (для exe, трей, рабочий стол) |
 | `talker_box.ico` | ICO-иконка (16-256px) для exe и установщика |
-| `mascot.png` | Маскот в центре круга |
+| `mascot_new.png` | Маскот в центре круга |
 | `dashboard.html` | HTML-макет дизайна |
 | `help.html` | HTML-руководство пользователя |
 | `settings.json` | Конфигурация: hotkey, mode |
@@ -108,7 +108,7 @@
   - Иконка exe задаётся через `--icon` в PyInstaller
   - Трей-иконка при записи: talker_box.png с цветным кольцом вместо микрофона
   - Ярлык на рабочем столе: `IconFilename: "{app}\TalkerBox.exe"`
-- **Маскот:** `mascot.png` добавлен в билд, отображается в центре круга
+- **Маскот:** `mascot_new.png` добавлен в билд, отображается в центре круга
 
 ### Размеры UI
 

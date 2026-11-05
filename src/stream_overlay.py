@@ -25,6 +25,18 @@ except Exception:   # без библиотеки останутся Win32-ка�
     UIA = None
 
 CARET_GAP = 20      # облачко висит на столько пикселей НИЖЕ каретки
+DEBUG_CARET = os.environ.get("TALKER_DEBUG_CARET") == "1"
+
+
+def _dbg(event, details=""):
+    """Диагностика привязки облачка: включается TALKER_DEBUG_CARET=1."""
+    if not DEBUG_CARET:
+        return
+    try:
+        from logger import log
+        log("caret: " + event, details)
+    except Exception:
+        print("caret:", event, details, flush=True)
 
 
 class SendButtonWindow(QWidget):
@@ -180,7 +192,11 @@ class GUITHREADINFO(ctypes.Structure):
 
 
 def _caret_pos():
-    """Экранная позиция каретки текста активного окна (или None)."""
+    """Экранная позиция каретки текста активного окна (или None).
+
+    Прямоугольник каретки Win32 иногда оказывается прямоугольником ВСЕГО поля
+    ввода — такие случаи отбрасываем, иначе облачко встаёт у края поля.
+    """
     try:
         user32 = ctypes.windll.user32
         gti = GUITHREADINFO()
@@ -193,10 +209,16 @@ def _caret_pos():
             return None
         if gti.hwndCaret:
             r = gti.rcCaret
-            if r.right > r.left and r.bottom > r.top:
-                pt = wintypes.POINT(r.left, r.top)
-                user32.ClientToScreen(gti.hwndCaret, ctypes.byref(pt))
-                return (pt.x, pt.y)
+            w = r.right - r.left
+            h = r.bottom - r.top
+            if w <= 0 or h <= 0:
+                return None
+            if w > 40 or h > 60:        # это поле целиком, а не каретка
+                _dbg("win32.skip", f"rect={w}x{h}")
+                return None
+            pt = wintypes.POINT(r.left, r.top)
+            user32.ClientToScreen(gti.hwndCaret, ctypes.byref(pt))
+            return _to_logical(pt.x, pt.y)
     except Exception:
         pass
     return None
@@ -231,13 +253,59 @@ def _dpr():
         return 1.0
 
 
+def _to_logical(x, y):
+    """Физические пиксели (Win32/UIA) → логические (Qt move())."""
+    s = _dpr() or 1.0
+    return (int(round(x / s)), int(round(y / s)))
+
+
+def _inside(x, y, field, margin=48):
+    """Точка рядом с полем ввода (а не в другом окне/углу экрана)?"""
+    left, top, w, h = field
+    return (left - margin) <= x <= (left + w + margin) and \
+           (top - margin) <= y <= (top + h + margin)
+
+
+def _uia_caret_rects(el):
+    """Прямоугольники каретки: сначала точный TextPattern2.GetCaretRange, потом выделение.
+
+    GetCaretRange() отдаёт именно каретку — у неё ширина ~0. Если приложение
+    этот метод не поддерживает, берём выделение (TextPattern.GetSelection) —
+    у него каретка стоит в начале выделения, поэтому позже используем левый край.
+    """
+    try:
+        p2 = el.GetCurrentPattern(UIA.UIA_TextPattern2Id)
+        tp2 = p2.QueryInterface(UIA.IUIAutomationTextPattern2)
+        res = tp2.GetCaretRange()
+        caret_range = res[1] if isinstance(res, tuple) else res
+        rects = caret_range.GetBoundingRectangles() or ()
+        if rects:
+            _dbg("uia.caret-range", f"rects={len(rects) // 4}")
+            return tuple(rects), "caret"
+    except Exception as exc:
+        _dbg("uia.caret-range-fail", repr(exc))
+    try:
+        pattern = el.GetCurrentPattern(UIA.UIA_TextPatternId)
+        text = pattern.QueryInterface(UIA.IUIAutomationTextPattern)
+        sel = text.GetSelection()
+        if sel and sel.Length:
+            rects = sel.GetElement(0).GetBoundingRectangles() or ()
+            return tuple(rects), "selection"
+    except Exception as exc:
+        _dbg("uia.selection-fail", repr(exc))
+    return (), "none"
+
+
 def _uia_caret_pos():
     """Экранная позиция каретки через UI Automation (или None).
 
-    Работает там, где каретку рисует само приложение: Chromium (Chrome, Edge,
-    Telegram, VS Code, Electron), WPF. UI Automation отдаёт прямоугольники
-    выделения; если ничего не выделено, возвращается вырожденный диапазон в
-    позиции каретки — берём правый край последнего прямоугольника.
+    Работает там, где каретку отдаёт само приложение: Chromium (Chrome, Edge,
+    Telegram, VS Code, Electron-приложения), WPF, Word.
+
+    Важная тонкость: у каретки ширина ~0, у выделения/строки — больше, поэтому
+    берём ЛЕВЫЙ край прямоугольника. Слишком высокие (страница/абзац) и слишком
+    широкие прямоугольники отбраковываем. Если рамка поля ввода известна —
+    каретка обязана быть рядом с ней.
     """
     if UIA is None:
         return None
@@ -250,23 +318,26 @@ def _uia_caret_pos():
                 return None
         except Exception:
             pass
-        pattern = el.GetCurrentPattern(UIA.UIA_TextPatternId)
-        text = pattern.QueryInterface(UIA.IUIAutomationTextPattern)
-        rects = ()
-        try:
-            sel = text.GetSelection()
-            if sel and sel.Length:
-                rects = sel.GetElement(0).GetBoundingRectangles() or ()
-        except Exception:
-            rects = ()
-        scale = _dpr()
+        rects, source = _uia_caret_rects(el)
+        scale = _dpr() or 1.0
+        field = _focus_rect()
+        _dbg("uia", f"src={source} rects={len(rects) // 4} field={field} scale={scale}")
         for i in range(len(rects) - 4, -1, -4):
             left, top, width, height = rects[i:i + 4]
-            if height < 6 or height > 260:      # не строка текста
+            if height < 6 or height > 60:        # не строка текста
                 continue
-            return (int(round((left + width) / scale)), int(round(top / scale)))
-    except Exception:
-        pass
+            if width > 1200:                     # абзац/блок целиком — не каретка
+                _dbg("uia.skip-wide", f"w={width:.0f} h={height:.0f}")
+                continue
+            x = int(round(left / scale))         # левый край: у каретки ширина ~0
+            y = int(round(top / scale))
+            if field and not _inside(x, y, field):
+                _dbg("uia.skip-outside", f"caret=({x},{y}) field={field}")
+                continue
+            _dbg("uia.hit", f"caret=({x},{y}) w={width:.0f} h={height:.0f} src={source}")
+            return (x, y)
+    except Exception as exc:
+        _dbg("uia.error", repr(exc))
     return None
 
 
@@ -314,7 +385,11 @@ def _focus_rect():
             return None
         if height > 260 or width > 1400:   # это окно/документ, а не поле ввода
             return None
-        return (left, top, width, height)
+        lx, ly = _to_logical(left, top)
+        s = _dpr() or 1.0
+        lw, lh = int(round(width / s)), int(round(height / s))
+        _dbg("field", f"rect=({lx},{ly},{lw},{lh})")
+        return (lx, ly, lw, lh)
     except Exception:
         return None
 
@@ -573,9 +648,17 @@ class StreamOverlay(QWidget):
         if pos:
             self._anchor, self._field_rect = pos, None
             self._anchor_weak = False
+            _dbg("anchor", f"uia caret={pos}")
             return
         self._anchor = _caret_pos()
         self._field_rect = None if self._anchor else _focus_rect()
+        if not self._anchor and not self._field_rect:
+            # ничего не нашли: берём позицию мыши ОДИН РАЗ и замораживаем.
+            # Живое слежение за мышью недопустимо — облачко «убегало» по экрану.
+            self._anchor = _cursor_pos()
+            _dbg("anchor", f"cursor frozen={self._anchor}")
+        else:
+            _dbg("anchor", f"win32 caret={self._anchor} field={self._field_rect}")
         # первый запрос UIA к свежему окну иногда отдаёт пустой прямоугольник
         # (холодное дерево доступности) — перепроверим, пока облачко на экране
         self._anchor_weak = True
@@ -663,9 +746,11 @@ class StreamOverlay(QWidget):
         if not pos:
             field = field or _focus_rect()           # поле ввода с фокусом
             if field:
-                pos = (field[0] + field[2] // 2, field[1])
+                # резерв: каретку не нашли — встаём у ЛЕВОГО края поля (там каретка
+                # почти всегда), а не по центру/справа, иначе облачко уезжает к краю
+                pos = (field[0] + 12, field[1])
             else:
-                pos = _cursor_pos()
+                return   # привязки нет — позицию не меняем (за мышью не бегаем)
         if not pos:
             return
         x, y = pos

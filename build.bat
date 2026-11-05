@@ -20,7 +20,7 @@ echo [2/5] Building executable...
 cd src
 if exist dist rmdir /S /Q dist
 if exist build rmdir /S /Q build
-..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../lang;lang" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
+..\venv\Scripts\python.exe -m PyInstaller --onefile --windowed --name TalkerBox --icon="../talker_box.ico" --add-data "../sounds;sounds" --add-data "../fonts;fonts" --add-data "../images;images" --add-data "../lang;lang" --add-data "../ads.json;." --add-data "hotkey_listener.py;." --add-data "../talker_box.png;." --add-data "../mascot_new.png;." --add-data "../help.html;." main.py
 cd ..
 
 echo.
@@ -32,7 +32,6 @@ xcopy /E /I /Y sounds dist\TalkerBox\sounds
 xcopy /E /I /Y fonts dist\TalkerBox\fonts
 xcopy /E /I /Y images dist\TalkerBox\images
 copy talker_box.png dist\TalkerBox\
-copy mascot.png dist\TalkerBox\
 if exist "mascot_new.png" copy mascot_new.png dist\TalkerBox\
 copy help.html dist\TalkerBox\
 if exist "settings.json" copy settings.json dist\TalkerBox\

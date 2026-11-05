@@ -1701,8 +1701,11 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
                 " font: bold 11px 'Segoe UI'; padding: 0 6px; }")
 
     def _pick_cloud_color(self, key, default):
+        # cloud_bg — фон облачка, cloud_fg — цвет текста в нём: заголовки разные,
+        # иначе у кнопки рядом со «Шрифт» висело «Цвет облачка»
+        title = "Цвет текста" if key == "cloud_fg" else "Цвет облачка"
         dlg = QColorDialog(QColor(self.settings.get(key, default)), self)
-        dlg.setWindowTitle("Цвет облачка")
+        dlg.setWindowTitle(title)
         # подписи внутри палитры — тёмно-серые, читаемые
         dlg.setStyleSheet(
             "QLabel { color: #3c3c3c; }"
@@ -2028,9 +2031,8 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         layout.addWidget(self._circle_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self._mascot_label = QLabel()
+        # маскот один — mascot_new.png
         mascot_path = os.path.join(get_base_dir(), "mascot_new.png")
-        if not os.path.exists(mascot_path):
-            mascot_path = os.path.join(get_base_dir(), "mascot.png")
         if os.path.exists(mascot_path):
             self._mascot_label.setPixmap(QPixmap(mascot_path).scaled(112, 112, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
