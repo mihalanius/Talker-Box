@@ -4,11 +4,17 @@
   "auto_send": true,
   "auto_start": true,
   "minimize_to_tray": true,
-  "cloud_enabled": true,
+  "cloud_enabled": false,
   "cloud_bg": "#f4f4f4",
   "cloud_fg": "#6d6d6d",
-  "cloud_font": 16,
+  "cloud_font": 14,
   "cloud_font_name": "Blogger Sans",
   "cloud_opacity": 100,
-  "mic_device": ""
+  "mic_device": "",
+  "lic_first_run": "2026-10-01",
+  "lic_last_seen": "2026-11-06",
+  "lic_key": "",
+  "install_id": "0c5946b415b44b15b9ae2d5fb47b82a3",
+  "telemetry_installed": true,
+  "telemetry_last_launch": "2026-11-06"
 }

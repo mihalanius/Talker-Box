@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QHBoxLayout, QLabel, QPushButton, QComboBox,
                               QCheckBox, QSystemTrayIcon, QMenu, QMessageBox,
                               QLineEdit, QListWidget, QFrame, QSlider, QColorDialog,
-                              QScrollArea, QTextEdit, QSizePolicy)
+                              QScrollArea, QTextEdit, QSizePolicy, QSpinBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF, QPoint
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QBrush, QFont, QAction, QColor, QPen, QPolygonF, QFontDatabase, QFontMetrics, QCursor, QRadialGradient
 from recorder import Recorder
@@ -20,6 +20,9 @@ from stream_recognizer import PhraseStream
 from stream_overlay import StreamOverlay
 from settings_manager import SettingsManager
 from ad_manager import AdManager
+from ad_banner import AdBanner, BANNER_HEIGHT
+from licensing import License
+from telemetry import Telemetry, advertisement_id
 from waveform import WaveformWindow
 from hotkey_hook import HotkeyListener, start_capture
 from sounds import play_start_sound, play_stop_sound, play_hover_sound, play_reset_sound
@@ -41,6 +44,7 @@ class TabButton(QPushButton):
                 border-radius: 8px; padding: 4px 12px; font-size: 11px;
             }
             QPushButton:hover { background: #dedede; color: #000; }
+            QPushButton:disabled { color: #b3b3ae; background: transparent; }
             QPushButton:checked {
                 background: #ededea; color: #000; font-weight: bold;
                 border: 1px solid #dcdcd8; padding-left: 27px;
@@ -57,6 +61,16 @@ class TabButton(QPushButton):
         f.setPixelSize(11)
         f.setBold(True)
         return QFontMetrics(f).horizontalAdvance(self.text())
+
+    def set_label(self, text):
+        """Сменить подпись и заново подогнать ширину (иначе текст обрезается)."""
+        self.setText(text)
+        f = QFont(self.font())
+        f.setPixelSize(11)
+        f.setBold(True)
+        tw = QFontMetrics(f).horizontalAdvance(text)
+        self.setFixedWidth(tw + 7 + 8 + 2 * 14 + 2)
+        self.update()
 
     def paintEvent(self, e):
         super().paintEvent(e)
@@ -659,6 +673,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._hotkey_signal.connect(self._on_hotkey_event, Qt.ConnectionType.QueuedConnection)
         self.settings = SettingsManager()
+        self.license = License(self.settings)   # триал 14 дней / free / pro
+        self.telemetry = Telemetry(self.settings)   # анонимная статистика (уведомление в «Инфо»)
+        self._startup = True                    # пока True — замки не показывают диалоги
         self.recorder = Recorder()
         # живое распознавание (GigaAM) + облачко над полем ввода
         self.phrase_stream = PhraseStream(None, lambda t, p=False: self.signals.stream_phrase.emit(t, p))
@@ -716,6 +733,8 @@ class MainWindow(QMainWindow):
         self.init_tray()
         self.init_hotkey()
         self.load_active_model()
+        self._apply_license()
+        self.telemetry.install_or_launch()
         self.init_ad_timer()
         self.init_waveform()
         self.show()
@@ -729,6 +748,7 @@ class MainWindow(QMainWindow):
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setFixedSize(730, 404)
+        self._base_w, self._base_h = 730, 404
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)   # без рамки Windows: внешний размер 730×404
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)  # окно всегда поверх остальных
         self.setStyleSheet("""
@@ -754,10 +774,24 @@ class MainWindow(QMainWindow):
         central = QWidget()
         central.setStyleSheet("background: transparent;")
         self.setCentralWidget(central)
-        root = QVBoxLayout(central)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        outer.addWidget(content, 1)
+
+        root = QVBoxLayout(content)
         root.setContentsMargins(18, 16, 18, 16)
         root.setSpacing(0)
         self._root_lay = root   # нужен, чтобы у «Словаря» убрать нижний отступ
+
+        # рекламная полоска под окном (бесплатная версия)
+        self.ad_banner = AdBanner(central)
+        self.ad_banner.clicked.connect(self._on_ad_clicked)
+        self.ad_banner.hide()
+        outer.addWidget(self.ad_banner, 0)
 
         header = QHBoxLayout()
         header.setSpacing(6)
@@ -1363,6 +1397,13 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
+        # строка состояния лицензии: триал / бесплатная / Pro
+        self.lic_status = QLabel(self.license.status_text())
+        self.lic_status.setStyleSheet(
+            "QLabel { color: #2e8b75; font: 11px 'Segoe UI';"
+            " background: transparent; padding: 0 0 8px 2px; }")
+        lay.addWidget(self.lic_status)
+
         box = GroupBox("О программе", active=False, inner=True)
 
         # текст читается и выделяется, но не правится; прокрутка — только внутри поля
@@ -1407,7 +1448,13 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
             "в настройках программы. Для точного распознавания программе нужны хорошая громкость и качество "
             "микрофона: если вы пишете через встроенный микрофон ноутбука и сидите далеко от него, программа "
             "может писать дичь, додумывая за вас плохо расслышанные слова, либо после отправки текста будут "
-            "исчезать слоги и часть предложения.")
+            "исчезать слоги и часть предложения.\n\n"
+            "Анонимная статистика\n"
+            "Программа отправляет на сервер обезличенные сведения: факт установки и запуска, версию программы, "
+            "версию Windows и страну (определяется по IP-адресу). Это нужно только для статистики установок и "
+            "географии пользователей. Программа НЕ отправляет: распознанный текст, аудио, имена файлов, "
+            "содержимое словаря и истории, а также любые персональные данные. Идентификатор установки — "
+            "случайный набор символов, он не связан с вами и не позволяет вас идентифицировать.")
 
     def _tab_style(self, active):
         return ("QPushButton { color: %s; background: %s; border: 1px solid rgba(0,255,136,%s);"
@@ -1418,6 +1465,11 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
             "0.6" if active else "0.25")
 
     def _show_tab(self, which):
+        # бесплатная версия: вкладки словаря и истории отключены (кликнуть нельзя)
+        if which == "dict" and not self.license.can("dictionary"):
+            which = "main"
+        if which == "hist" and not self.license.can("history"):
+            which = "main"
         pages = {"main": self.main_scroll, "settings": self.settings_scroll, "dict": self.dict_scroll,
                  "hist": self.hist_scroll, "help": self.help_scroll}
         buttons = {"main": self.btn_tab_main, "settings": self.btn_tab_set, "dict": self.btn_tab_dict,
@@ -1598,6 +1650,13 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         rl.addStretch()
         self.cloud_toggle = ToggleSwitch(checked=self.settings.get("cloud_enabled", True))
         self.cloud_toggle.toggled.connect(self._toggle_cloud)
+        # замочек рядом с переключателем: в бесплатной версии облачко недоступно
+        self.cloud_lock = QLabel("🔒")
+        self.cloud_lock.setStyleSheet(
+            "QLabel { color: #d19a00; font-size: 11px; background: transparent; }")
+        self.cloud_lock.setToolTip("Облачко живого текста — в версии Pro")
+        self.cloud_lock.setVisible(False)
+        rl.addWidget(self.cloud_lock)
         rl.addWidget(self.cloud_toggle)
         body.addWidget(right, 1)
         grid.addWidget(row)
@@ -1629,19 +1688,19 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         self.cloud_font_name.currentTextChanged.connect(self._apply_cloud_settings)
         ll.addWidget(self.cloud_font_name, 1)
 
+        # размер шрифта — список готовых значений (10, 12, 14, 16, 18)
         self.cloud_font_size = QComboBox()
-        self.cloud_font_size.setFixedSize(56, 27)
-        self.cloud_font_size.setEditable(False)   # только выбор из списка, текст ввести нельзя
+        self.cloud_font_size.setFixedSize(64, 27)
+        self.cloud_font_size.setEditable(False)
         self.cloud_font_size.setStyleSheet(self._combo_style())
-        sizes = ["14", "16", "18"]
+        sizes = ["10", "12", "14", "16", "18"]
         self.cloud_font_size.addItems(sizes)
-        saved_size = str(self.settings.get("cloud_font", 16))
-        if saved_size not in sizes:   # старое значение вне списка — берём ближайшее
-            try:
-                saved_size = min(sizes, key=lambda s: abs(int(s) - int(saved_size)))
-            except Exception:
-                saved_size = "16"
-        self.cloud_font_size.setCurrentText(saved_size)
+        try:
+            saved_size = int(self.settings.get("cloud_font", 16) or 16)
+        except Exception:
+            saved_size = 16
+        # если сохранено значение вне списка — берём ближайшее
+        self.cloud_font_size.setCurrentText(min(sizes, key=lambda s: abs(int(s) - saved_size)))
         self.cloud_font_size.currentTextChanged.connect(self._apply_cloud_settings)
         ll.addWidget(self.cloud_font_size)
         body.addWidget(left, 1)
@@ -1721,6 +1780,7 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
 
     def _toggle_cloud(self, checked):
         self.settings.set("cloud_enabled", bool(checked))
+        self._play_toggle_sound(bool(checked))     # тот же щелчок, что у авто-отправки
         self._apply_cloud_settings()
         # капсула и облачко меняются местами: включено — волна в облачке
         if self.recorder.is_recording:
@@ -1805,7 +1865,7 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
             size = int(self.cloud_font_size.currentText())
         except Exception:
             size = 16
-        size = max(8, min(18, size))
+        size = max(8, min(48, size))
         # фокус с настроек убираем — чтобы диктовка не «влетала» в поля
         try:
             f = QApplication.focusWidget()
@@ -2137,9 +2197,15 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
         painter.end()
 
     def init_ad_timer(self):
-        self.ad_timer = QTimer()
-        self.ad_timer.timeout.connect(self.check_ads)
-        self.ad_timer.start(60000)
+        # реклама — только полоской под окном; всплывающих уведомлений нет
+        QTimer.singleShot(2500, self.refresh_banner_ad)
+        self._ad_rotate_timer = QTimer(self)
+        self._ad_rotate_timer.timeout.connect(self.refresh_banner_ad)
+        self._ad_rotate_timer.start(45000)
+        # статистику отправляем раз в 10 минут (в фоне), чтобы не долбить сервер
+        self._telemetry_timer = QTimer(self)
+        self._telemetry_timer.timeout.connect(self.telemetry.flush)
+        self._telemetry_timer.start(10 * 60 * 1000)
 
     def _paint_neon_active(self, widget, event):
         painter = QPainter(widget)
@@ -2168,20 +2234,86 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
     def init_waveform(self):
         self.waveform = WaveformWindow()
 
-    def check_ads(self):
-        if self.ad_manager.should_show():
-            self.show_tray_ad()
-            self.ad_manager.mark_shown()
+    def _apply_license(self):
+        """Применить ограничения согласно режиму: trial / free / pro."""
+        lic = self.license
+        if not lic.can("dictionary"):
+            self.btn_tab_dict.set_label("🔒 Словарь")
+            self.btn_tab_dict.setEnabled(False)     # не нажимается вовсе
+        if not lic.can("history"):
+            self.btn_tab_hist.set_label("🔒 История")
+            self.btn_tab_hist.setEnabled(False)
+        if not lic.can("cloud"):
+            # бесплатная версия: облачко выключено и не включается (остаётся капсула с волной)
+            try:
+                self._suppress_toggle_sound = True   # выключение принудительное — без щелчка
+                self.cloud_toggle.setChecked(False)
+                self.settings.set("cloud_enabled", False)
+                self.stream_overlay.set_enabled(False)
+                self.cloud_toggle.setEnabled(False)
+                self.cloud_toggle.setToolTip("Облачко живого текста — в версии Pro")
+                self.cloud_lock.setVisible(True)
+            except Exception:
+                pass
+            self._suppress_toggle_sound = False
+        log("LICENSE", f"mode={lic.mode()} days_left={lic.days_left()} rollback={lic.clock_rollback}")
+        try:
+            self.lic_status.setText(lic.status_text())
+        except Exception:
+            pass
+        if lic.clock_rollback:
+            QTimer.singleShot(1500, lambda: QMessageBox.warning(
+                self, "Дата системы",
+                "Похоже, системные часы переведены назад.\n"
+                "Пробный период считается по самой поздней замеченной дате."))
+        self.refresh_banner_ad()
+        # через 1,5 с после старта замки начинают показывать диалог «Pro»
+        QTimer.singleShot(1500, lambda: setattr(self, "_startup", False))
 
-    def show_tray_ad(self):
-        config = self.ad_manager.get_tray_config()
-        if config:
-            self.tray.showMessage(
-                config.get("title", "Talker Box"),
-                config.get("message", ""),
-                QSystemTrayIcon.MessageIcon.Information,
-                10000
-            )
+    def _pro_required(self, what):
+        """Диалог «доступно в Pro» вместо перехода на закрытую вкладку."""
+        box = QMessageBox(self)
+        box.setWindowTitle(f"{what} — Talker Box Pro")
+        box.setText(f"{what} доступен в версии Pro.")
+        box.setInformativeText(self.license.status_text())
+        buy = box.addButton("Купить Pro", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Закрыть", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is buy:
+            QMessageBox.information(
+                self, "Покупка",
+                "Продажи ещё не открыты — здесь будет ссылка на оплату.")
+
+    def _set_ad_visible(self, visible):
+        """Показать/скрыть полоску и подогнать высоту окна."""
+        if getattr(self, "_ad_visible", None) == visible:
+            return
+        self._ad_visible = visible
+        self.ad_banner.setVisible(visible)
+        self.setFixedSize(self._base_w,
+                          self._base_h + (BANNER_HEIGHT if visible else 0))
+
+    def refresh_banner_ad(self):
+        """Взять очередной баннер и показать его полоской под окном."""
+        try:
+            if not self.ad_manager.is_enabled() or not self.license.show_ads():
+                self._set_ad_visible(False)
+                return
+            self.ad_manager.refresh()
+            ad = self.ad_manager.next_ad("bar")
+            if not ad:
+                self._set_ad_visible(False)
+                return
+            self.ad_banner.set_ad(ad)
+            self._set_ad_visible(True)
+            self.telemetry.ad_shown(advertisement_id(ad))
+        except Exception as exc:
+            log("AD_ERROR", repr(exc))
+            self._set_ad_visible(False)
+
+    def _on_ad_clicked(self, link):
+        log("AD_CLICK", str(link)[:200])
+        self.telemetry.ad_clicked(link)
 
     def init_tray(self):
         self.tray = QSystemTrayIcon(self)
@@ -3007,16 +3139,22 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
     def on_auto_send_changed(self, state):
         self.settings.set("auto_send", state == Qt.CheckState.Checked.value)
 
-    def on_auto_send_toggled(self, checked):
-        self.settings.set("auto_send", checked)
+    def _play_toggle_sound(self, checked):
+        """Щелчок при переключении тумблера: вверх — включили, вниз — выключили."""
+        if getattr(self, "_suppress_toggle_sound", False):
+            return
         try:
             import winsound
             sound = "transition_up.wav" if checked else "transition_down.wav"
             wav = os.path.join(get_base_dir(), "sounds", sound)
             if os.path.exists(wav):
                 winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
-        except:
+        except Exception:
             pass
+
+    def on_auto_send_toggled(self, checked):
+        self.settings.set("auto_send", checked)
+        self._play_toggle_sound(bool(checked))
 
     def _format_hotkey(self, hotkey):
         modifier_order = {"ctrl": 0, "shift": 1, "alt": 2, "win": 3}
@@ -3119,6 +3257,10 @@ h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
 
     def quit_app(self):
         self._stop_listener()
+        try:
+            self.telemetry.flush()      # отправить статистику перед выходом
+        except Exception:
+            pass
         self.tray.hide()
         QApplication.quit()
 

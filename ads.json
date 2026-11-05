@@ -1,15 +1,26 @@
 {
-  "enabled": false,
-  "interval_minutes": 60,
+  "enabled": true,
   "mode": "banner_only",
-  "banner": {
-    "image": "assets/ads/banner.png",
-    "link": "https://your-link.com",
-    "alt_text": "Реклама"
-  },
-  "tray_notification": {
-    "title": "Talker Box",
-    "message": "Попробуйте Talker Box Pro — 50+ языков",
-    "link": "https://your-link.com"
-  }
+  "interval_minutes": 60,
+  "refresh_minutes": 180,
+  "ads_url": "",
+  "bar": [
+    {
+      "video": "ads/banner_784.mp4",
+      "text": "Видео-баннер — Talker Box Pro",
+      "link": "https://example.com/"
+    },
+    {
+      "image": "ads/784.png",
+      "text": "Картинка-баннер — Talker Box Pro",
+      "link": "https://example.com/"
+    }
+  ],
+  "wide": [
+    {
+      "video": "ads/banner_404.mp4",
+      "text": "Видео-баннер (широкий)",
+      "link": "https://example.com/"
+    }
+  ]
 }
